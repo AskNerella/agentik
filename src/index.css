@@ -1,0 +1,61 @@
+@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Google+Sans:ital,opsz,wght@0,17..18,400..700;1,17..18,400..700&display=swap');
+
+:root {
+  --bg: #f5f2ea;
+  --surface: #faf8f3;
+  --surface-strong: #fffdf8;
+  --surface-soft: #f0ece3;
+  --border: #e0dbcf;
+  --border-strong: #c8c0b2;
+  --text: #171512;
+  --muted: #706a60;
+  --faint: #a29a8d;
+  --accent: #bf5f45;
+  --accent-strong: #9d442e;
+  --accent-soft: #f2ddd4;
+  --ok: #2f7d51;
+  --ok-soft: #e4f2e9;
+  --danger: #b84444;
+  --danger-soft: #f7dfdf;
+  --focus: #2f78b7;
+  --shadow: none;
+  --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  color: var(--text);
+  background: var(--bg);
+  font-family:
+    'Google Sans', 'Product Sans', 'Google Sans Text', ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: var(--surface);
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled,
+textarea:disabled {
+  cursor: not-allowed;
+}
+
+#root {
+  min-height: 100svh;
+}
