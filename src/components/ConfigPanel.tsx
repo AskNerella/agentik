@@ -118,6 +118,17 @@ export function ConfigPanel({
     setRenameModalOpen(false)
   }
 
+  const exportSession = (session: ChatSession) => {
+    const safeTitle = session.title.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'session'
+    const url = URL.createObjectURL(new Blob([JSON.stringify(session, null, 2)], { type: 'application/json' }))
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `agentik-${safeTitle}.json`
+    anchor.click()
+    URL.revokeObjectURL(url)
+    setOpenMenuId(null)
+  }
+
   if (collapsed) {
     return (
       <aside className="config-panel config-collapsed side-panel">
@@ -224,11 +235,16 @@ export function ConfigPanel({
                   </button>
                   {openMenuId === session.id ? (
                     <div className="session-menu">
+                      <button type="button" onClick={() => exportSession(session)}>
+                        <Download size={14} />
+                        Export
+                      </button>
                       <button type="button" onClick={() => openRenameModal(session)}>
                         <Pencil size={14} />
                         Rename
                       </button>
                       <button
+                        className="danger"
                         type="button"
                         onClick={() => {
                           onDeleteSession(session.id)

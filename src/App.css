@@ -66,6 +66,8 @@
 .workspace {
   min-width: 0;
   display: block;
+  height: 100svh;
+  overflow: hidden;
   border-width: 0;
   background: var(--surface);
   position: relative;
@@ -332,7 +334,7 @@
   z-index: 5;
   top: 42px;
   right: 4px;
-  min-width: 112px;
+  min-width: 128px;
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 4px;
@@ -349,12 +351,20 @@
   gap: 8px;
   border: 0;
   border-radius: 6px;
-  color: var(--danger);
+  color: var(--text);
   background: transparent;
   font-size: 13px;
 }
 
 .session-menu button:hover {
+  background: var(--surface-soft);
+}
+
+.session-menu button.danger {
+  color: var(--danger);
+}
+
+.session-menu button.danger:hover {
   background: var(--danger-soft);
 }
 
@@ -694,11 +704,19 @@ textarea::placeholder {
 .chat-section {
   display: grid;
   grid-template-rows: auto minmax(180px, 1fr) auto auto;
-  min-height: 100svh;
+  height: 100svh;
+  min-height: 0;
   border-bottom: 0;
   max-width: 920px;
   margin: 0 auto;
   width: 100%;
+}
+
+.chat-section > .section-heading {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: var(--surface);
 }
 
 .messages {
@@ -1389,7 +1407,7 @@ textarea::placeholder {
   align-items: center;
   border: 0;
   border-radius: 8px;
-  padding: 8px 0;
+  padding: 8px 10px 8px 0;
   background: transparent;
   text-align: left;
 }
@@ -1449,6 +1467,7 @@ textarea::placeholder {
 }
 
 .timeline-ms {
+  padding-right: 4px;
   text-align: right;
 }
 
@@ -1561,6 +1580,26 @@ textarea::placeholder {
   gap: 0;
   overflow: hidden;
   padding: 0;
+}
+
+.json-modal {
+  width: min(1040px, 100%);
+  height: min(720px, calc(100svh - 40px));
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.json-modal .modal-heading {
+  border-bottom: 1px solid var(--border);
+  padding: 18px;
+}
+
+.json-modal pre {
+  min-height: 0;
+  overflow: auto;
+  margin: 14px;
 }
 
 .modal-heading {

@@ -52,7 +52,6 @@ export function InspectorPanel({
 }: Props) {
   const [activeTab, setActiveTab] = useState<InspectorTab>('analytics')
   const [selectedTrace, setSelectedTrace] = useState<TraceLog | null>(null)
-  const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null)
   const [rawTracePayload, setRawTracePayload] = useState(false)
   const [jsonOpen, setJsonOpen] = useState(false)
   const [expandedSkillIds, setExpandedSkillIds] = useState<Set<string>>(new Set())
@@ -61,11 +60,8 @@ export function InspectorPanel({
   const responseLogs = useMemo(() => logs.filter((log) => log.kind === 'response'), [logs])
   const streamLogs = useMemo(() => logs.filter((log) => log.kind === 'stream'), [logs])
   const visibleLogs = useMemo(() => {
-    return logs.filter((log) => {
-      const matchesRequest = selectedRequestId ? log.requestId === selectedRequestId : true
-      return matchesRequest
-    })
-  }, [logs, selectedRequestId])
+    return logs
+  }, [logs])
   const spentMs = Math.max(0, ...responseLogs.map((log) => log.durationMs), ...streamLogs.map((log) => log.durationMs))
   const averageRequestMs =
     responseLogs.length > 0
@@ -86,7 +82,6 @@ export function InspectorPanel({
 
   const handleClearTraces = () => {
     setSelectedTrace(null)
-    setSelectedRequestId(null)
     onClearTraces()
   }
 
@@ -256,23 +251,6 @@ export function InspectorPanel({
                 Clear
               </button>
             </div>
-            {requestLogs.length > 0 ? (
-              <div className="request-filter-list">
-                <button className={!selectedRequestId ? 'active' : ''} type="button" onClick={() => setSelectedRequestId(null)}>
-                  All
-                </button>
-                {requestLogs.map((log) => (
-                  <button
-                    className={selectedRequestId === log.requestId ? 'active' : ''}
-                    type="button"
-                    key={log.id}
-                    onClick={() => setSelectedRequestId(log.requestId ?? null)}
-                  >
-                    {log.displayText || 'Request'}
-                  </button>
-                ))}
-              </div>
-            ) : null}
             {visibleLogs.length === 0 ? (
               <div className="inspector-empty">No Information</div>
             ) : (
@@ -282,7 +260,7 @@ export function InspectorPanel({
                     <span className={`timeline-dot ${log.status}`} />
                     <span className="timeline-copy">
                       <strong>{log.displayText || log.label}</strong>
-                      <span>{log.kind} • {new Date(log.timestamp).toLocaleTimeString()}</span>
+                      <span>{new Date(log.timestamp).toLocaleTimeString()}</span>
                     </span>
                     <span className="timeline-bar">
                       <span style={{ width: `${Math.max(8, (log.durationMs / longestTrace) * 100)}%` }} />
