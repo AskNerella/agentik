@@ -19,6 +19,7 @@ function JsonBlock({ value, raw }: { value: unknown; raw?: boolean }) {
 
 export function MonitoringPage({ logs, onClearTraces, onReplayTrace }: Props) {
   const [query, setQuery] = useState('')
+  const [previousSearches, setPreviousSearches] = useState<string[]>([])
   const [selectedTrace, setSelectedTrace] = useState<TraceLog | null>(null)
   const [rawTracePayload, setRawTracePayload] = useState(false)
   const longestTrace = Math.max(1, ...logs.map((log) => log.durationMs))
@@ -33,6 +34,12 @@ export function MonitoringPage({ logs, onClearTraces, onReplayTrace }: Props) {
     )
   }, [logs, query])
 
+  const commitSearch = (value: string) => {
+    const nextSearch = value.trim()
+    if (!nextSearch) return
+    setPreviousSearches((current) => [nextSearch, ...current.filter((item) => item !== nextSearch)].slice(0, 8))
+  }
+
   return (
     <section className="monitoring-page panel-section">
       <div className="section-heading monitoring-heading">
@@ -40,9 +47,8 @@ export function MonitoringPage({ logs, onClearTraces, onReplayTrace }: Props) {
           <span className="eyebrow">Monitoring</span>
           <h2>Trace monitoring</h2>
         </div>
-        <button className="secondary-button compact-button" type="button" onClick={onClearTraces}>
+        <button className="icon-button" type="button" onClick={onClearTraces} aria-label="Clear traces">
           <Trash2 size={15} />
-          Clear traces
         </button>
       </div>
 
@@ -52,9 +58,49 @@ export function MonitoringPage({ logs, onClearTraces, onReplayTrace }: Props) {
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
+            onBlur={(event) => commitSearch(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') commitSearch(event.currentTarget.value)
+            }}
             placeholder="Search by context id, request id, or text"
             aria-label="Search traces"
           />
+        </div>
+        <div className="previous-searches">
+          <div className="previous-searches-heading">
+            <span>Previous searches</span>
+            {previousSearches.length > 0 ? (
+              <button type="button" onClick={() => setPreviousSearches([])}>
+                Clear
+              </button>
+            ) : null}
+          </div>
+          {previousSearches.length === 0 ? (
+            <p>No previous searches</p>
+          ) : (
+            <div className="previous-search-list">
+              {previousSearches.map((search) => (
+                <span className="previous-search" key={search}>
+                  <input
+                    value={search}
+                    onChange={(event) => {
+                      const value = event.target.value
+                      setPreviousSearches((current) => current.map((item) => (item === search ? value : item)))
+                    }}
+                    onFocus={() => setQuery(search)}
+                    aria-label={`Previous search ${search}`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setPreviousSearches((current) => current.filter((item) => item !== search))}
+                    aria-label={`Clear previous search ${search}`}
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -100,10 +146,12 @@ export function MonitoringPage({ logs, onClearTraces, onReplayTrace }: Props) {
               <button className={rawTracePayload ? 'active' : ''} type="button" onClick={() => setRawTracePayload(true)}>
                 Raw
               </button>
-              <button type="button" onClick={() => onReplayTrace(selectedTrace)}>
-                <RotateCcw size={13} />
-                Replay
-              </button>
+              {selectedTrace.kind === 'request' ? (
+                <button type="button" onClick={() => onReplayTrace(selectedTrace)}>
+                  <RotateCcw size={13} />
+                  Replay Event
+                </button>
+              ) : null}
             </div>
             <div className="trace-detail-grid">
               <section>

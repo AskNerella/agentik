@@ -50,5 +50,10 @@ export function useAgent(appendTrace: AppendTrace) {
     [appendTrace],
   )
 
-  return { card, validation, loading, error, loadAgentCard }
+  const clearAgentCard = useCallback(() => {
+    setCard(null)
+    setError(null)
+  }, [])
+
+  return { card, setCard, clearAgentCard, validation, loading, error, loadAgentCard }
 }

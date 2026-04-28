@@ -1,8 +1,10 @@
 import {
+  RotateCcw,
   Maximize2,
   Minimize2,
   SlidersHorizontal,
   Sparkles,
+  Trash2,
   X,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -15,6 +17,7 @@ type Props = {
   validation: AgentCardValidation
   agentError: string | null
   logs: TraceLog[]
+  traceFilterLabel: string
   messageCount: number
   artifacts: AgentArtifact[]
   onReplayTrace: (trace: TraceLog) => void
@@ -41,6 +44,7 @@ export function InspectorPanel({
   validation,
   agentError,
   logs,
+  traceFilterLabel,
   messageCount,
   artifacts,
   onReplayTrace,
@@ -57,16 +61,10 @@ export function InspectorPanel({
   const [expandedSkillIds, setExpandedSkillIds] = useState<Set<string>>(new Set())
   const longestTrace = Math.max(1, ...logs.map((log) => log.durationMs))
   const requestLogs = useMemo(() => logs.filter((log) => log.kind === 'request'), [logs])
-  const responseLogs = useMemo(() => logs.filter((log) => log.kind === 'response'), [logs])
   const streamLogs = useMemo(() => logs.filter((log) => log.kind === 'stream'), [logs])
   const visibleLogs = useMemo(() => {
     return logs
   }, [logs])
-  const spentMs = Math.max(0, ...responseLogs.map((log) => log.durationMs), ...streamLogs.map((log) => log.durationMs))
-  const averageRequestMs =
-    responseLogs.length > 0
-      ? Math.round(responseLogs.reduce((sum, log) => sum + log.durationMs, 0) / responseLogs.length)
-      : 0
 
   const toggleSkill = (id: string) => {
     setExpandedSkillIds((current) => {
@@ -147,25 +145,7 @@ export function InspectorPanel({
                 <strong>{streamLogs.length}</strong>
                 <span>Response streams</span>
               </div>
-              <div className="metric-card">
-                <strong>{formatDuration(spentMs)}</strong>
-                <span>Time spent</span>
-              </div>
-              <div className="metric-card">
-                <strong>{formatDuration(averageRequestMs)}</strong>
-                <span>Avg/request</span>
-              </div>
             </div>
-            {responseLogs.length > 0 ? (
-              <div className="request-time-list">
-                {responseLogs.map((log) => (
-                  <div key={log.id}>
-                    <span>{log.displayText || 'Request'}</span>
-                    <strong>{formatDuration(log.durationMs)}</strong>
-                  </div>
-                ))}
-              </div>
-            ) : null}
           </section>
         ) : null}
 
@@ -246,9 +226,12 @@ export function InspectorPanel({
         {activeTab === 'traces' ? (
           <section className="inspector-pane">
             <div className="context-card-heading">
-              <h3>Traces</h3>
-              <button className="text-button" type="button" onClick={handleClearTraces}>
-                Clear
+              <div>
+                <h3>Traces</h3>
+                <p className="trace-context-label">{traceFilterLabel}</p>
+              </div>
+              <button className="icon-button subtle" type="button" onClick={handleClearTraces} aria-label="Clear traces">
+                <Trash2 size={15} />
               </button>
             </div>
             {visibleLogs.length === 0 ? (
@@ -312,9 +295,10 @@ export function InspectorPanel({
                 Raw
               </button>
             </div>
-            {selectedTrace.kind === 'request' || selectedTrace.displayText ? (
+            {selectedTrace.kind === 'request' ? (
               <button className="secondary-button trace-replay-button" type="button" onClick={() => onReplayTrace(selectedTrace)}>
-                Replay request
+                <RotateCcw size={14} />
+                Replay Event
               </button>
             ) : null}
             <div className="trace-detail-grid">

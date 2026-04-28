@@ -79,6 +79,7 @@ export type TraceLog = {
   label: string
   kind: 'request' | 'response' | 'stream' | 'agent-card'
   requestId?: string
+  messageId?: string
   contextId?: string
   displayText?: string
   requestTimestamp?: string
@@ -97,6 +98,7 @@ export type ChatSession = {
   endpoint: string
   contextId: string
   connected: boolean
+  agentCard?: AgentCard | null
   renamed?: boolean
   updatedAt: string
 }

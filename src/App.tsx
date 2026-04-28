@@ -50,6 +50,7 @@ function App() {
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false)
   const [inspectorExpanded, setInspectorExpanded] = useState(false)
   const [activePage, setActivePage] = useState<AppPage>('playground')
+  const [selectedTraceMessageId, setSelectedTraceMessageId] = useState<string | null>(null)
   const [activeSessionId, setActiveSessionId] = useState<string>(storedData.sessions?.[0]?.id ?? initialSessionId)
   const [activeContextId, setActiveContextId] = useState<string>(storedData.sessions?.[0]?.contextId ?? initialContextId)
   const [sessions, setSessions] = useState<ChatSession[]>(
@@ -72,7 +73,7 @@ function App() {
   const [headers, setHeaders] = useState<HeaderPair[]>([])
 
   const { logs, appendTrace, clearLogs, setLogs } = useTrace(storedData.traces ?? [])
-  const { card, validation, loading: agentLoading, error: agentError, loadAgentCard } = useAgent(appendTrace)
+  const { card, setCard, clearAgentCard, validation, loading: agentLoading, error: agentError, loadAgentCard } = useAgent(appendTrace)
   const {
     messages,
     setMessages,
@@ -84,6 +85,25 @@ function App() {
 
   const requestHeaders = useMemo(() => buildHeaderMap(headers, authToken), [headers, authToken])
   const activeMessageEndpoint = card?.url || card?.endpoint || endpoint
+  const activeSession = useMemo(
+    () => sessions.find((session) => session.id === activeSessionId) ?? sessions[0],
+    [activeSessionId, sessions],
+  )
+  const activeSessionLogs = useMemo(
+    () =>
+      logs.filter((log) => {
+        if (log.kind === 'agent-card') return Boolean(endpoint && log.request && JSON.stringify(log.request).includes(endpoint))
+        return log.contextId === activeContextId
+      }),
+    [activeContextId, endpoint, logs],
+  )
+  const inspectorLogs = useMemo(
+    () =>
+      selectedTraceMessageId
+        ? activeSessionLogs.filter((log) => log.messageId === selectedTraceMessageId)
+        : activeSessionLogs,
+    [activeSessionLogs, selectedTraceMessageId],
+  )
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -116,6 +136,7 @@ function App() {
                 endpoint,
                 contextId: activeContextId,
                 connected: endpointProvided,
+                agentCard: card,
                 updatedAt: new Date().toISOString(),
               }
             : session,
@@ -124,7 +145,7 @@ function App() {
     }, 0)
 
     return () => window.clearTimeout(timer)
-  }, [activeContextId, activeSessionId, endpoint, endpointProvided, messages])
+  }, [activeContextId, activeSessionId, card, endpoint, endpointProvided, messages])
 
   useEffect(() => {
     if (!notification) return undefined
@@ -139,6 +160,7 @@ function App() {
     const nextCard = await loadAgentCard(endpoint.trim(), requestHeaders)
     if (nextCard && validateAgentCard(nextCard).valid) {
       setEndpointProvided(true)
+      setSelectedTraceMessageId(null)
       return
     }
 
@@ -153,6 +175,7 @@ function App() {
   const handleEndpointChange = (value: string) => {
     setEndpoint(value)
     setEndpointProvided(false)
+    clearAgentCard()
     setNotification(null)
   }
 
@@ -178,6 +201,8 @@ function App() {
     setMessages([])
     setEndpoint('')
     setEndpointProvided(false)
+    clearAgentCard()
+    setSelectedTraceMessageId(null)
   }
 
   const handleSelectSession = (id: string) => {
@@ -189,6 +214,9 @@ function App() {
     setMessages(nextSession.messages)
     setEndpoint(nextSession.endpoint)
     setEndpointProvided(nextSession.connected)
+    setCard(nextSession.agentCard ?? null)
+    setSelectedTraceMessageId(null)
+    if (nextSession.connected && nextSession.endpoint && !nextSession.agentCard) void loadAgentCard(nextSession.endpoint, requestHeaders)
   }
 
   const handleDeleteSession = (id: string) => {
@@ -212,6 +240,8 @@ function App() {
       setMessages(nextSession.messages)
       setEndpoint(nextSession.endpoint)
       setEndpointProvided(nextSession.connected)
+      setCard(nextSession.agentCard ?? null)
+      setSelectedTraceMessageId(null)
     }
   }
 
@@ -251,11 +281,63 @@ function App() {
     setEndpointProvided(false)
   }
 
+  const handleUpdateServer = (id: string, server: Omit<A2AServer, 'id' | 'createdAt'>) => {
+    const previous = servers.find((item) => item.id === id)
+    const changed =
+      previous &&
+      (previous.name !== server.name ||
+        previous.endpoint !== server.endpoint ||
+        previous.authToken !== server.authToken ||
+        JSON.stringify(previous.headers) !== JSON.stringify(server.headers))
+    setServers((current) =>
+      current.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              ...server,
+            }
+          : item,
+      ),
+    )
+
+    if (previous?.endpoint && endpoint === previous.endpoint) {
+      setEndpoint(server.endpoint)
+      setAuthToken(server.authToken)
+      setHeaders(server.headers)
+    }
+
+    if (previous?.endpoint && changed) {
+      const disconnected = sessions.filter((session) => session.endpoint === previous.endpoint && session.connected).length
+      setSessions((current) =>
+        current.map((session) => {
+          if (session.endpoint !== previous.endpoint || !session.connected) return session
+          return { ...session, connected: false, agentCard: null, updatedAt: new Date().toISOString() }
+        }),
+      )
+      if (endpoint === previous.endpoint) {
+        setEndpointProvided(false)
+        clearAgentCard()
+      }
+      if (disconnected > 0) setNotification('Disconnected sessions using the updated server.')
+    }
+  }
+
+  const handleDeleteServer = (id: string) => {
+    const server = servers.find((item) => item.id === id)
+    setServers((current) => current.filter((item) => item.id !== id))
+    if (server?.endpoint && endpoint === server.endpoint) {
+      setEndpoint('')
+      setEndpointProvided(false)
+      clearAgentCard()
+    }
+  }
+
   const handleSelectServer = (server: A2AServer) => {
     setEndpoint(server.endpoint)
     setAuthToken(server.authToken)
     setHeaders(server.headers)
     setEndpointProvided(false)
+    clearAgentCard()
     setNotification(null)
   }
 
@@ -265,6 +347,7 @@ function App() {
   }
 
   const handleReplayTrace = (trace: TraceLog) => {
+    if (trace.kind !== 'request') return
     const replayText = trace.displayText?.trim()
     if (!replayText || !activeMessageEndpoint.trim()) return
     sendChatMessage(activeMessageEndpoint.trim(), replayText, streaming, activeContextId, requestHeaders)
@@ -318,6 +401,8 @@ function App() {
         servers={servers}
         activeSessionId={activeSessionId}
         onSaveServer={handleSaveServer}
+        onUpdateServer={handleUpdateServer}
+        onDeleteServer={handleDeleteServer}
         onSelectServer={handleSelectServer}
         onNewSession={handleNewSession}
         onSelectSession={handleSelectSession}
@@ -358,6 +443,8 @@ function App() {
             onSend={handleSendMessage}
             onClear={clearMessages}
             contextId={activeContextId}
+            selectedTraceMessageId={selectedTraceMessageId}
+            onSelectMessageTrace={(messageId) => setSelectedTraceMessageId(messageId)}
           />
         )}
       </div>
@@ -366,15 +453,22 @@ function App() {
         card={card}
         validation={validation}
         agentError={agentError}
-        logs={logs}
+        logs={inspectorLogs}
+        traceFilterLabel={selectedTraceMessageId ? 'Selected message' : activeSession?.title ?? 'Session'}
         messageCount={messages.length}
         artifacts={messages.flatMap((message) => message.artifacts ?? [])}
         onReplayTrace={handleReplayTrace}
         onClearTraces={handleClearTraces}
         collapsed={inspectorCollapsed}
-        onToggleCollapsed={() => setInspectorCollapsed((collapsed) => !collapsed)}
+        onToggleCollapsed={() => {
+          setInspectorCollapsed((collapsed) => !collapsed)
+          setInspectorExpanded(false)
+        }}
         expanded={inspectorExpanded}
-        onToggleExpanded={() => setInspectorExpanded((expanded) => !expanded)}
+        onToggleExpanded={() => {
+          setInspectorCollapsed(false)
+          setInspectorExpanded((expanded) => !expanded)
+        }}
       />
     </main>
   )

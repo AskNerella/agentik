@@ -1,5 +1,4 @@
 import {
-  BotMessageSquare,
   Check,
   LineChart,
   MoreVertical,
@@ -25,6 +24,8 @@ type Props = {
   servers: A2AServer[]
   activeSessionId: string
   onSaveServer: (server: Omit<A2AServer, 'id' | 'createdAt'>) => void
+  onUpdateServer: (id: string, server: Omit<A2AServer, 'id' | 'createdAt'>) => void
+  onDeleteServer: (id: string) => void
   onSelectServer: (server: A2AServer) => void
   onNewSession: () => void
   onSelectSession: (id: string) => void
@@ -48,6 +49,8 @@ export function ConfigPanel({
   servers,
   activeSessionId,
   onSaveServer,
+  onUpdateServer,
+  onDeleteServer,
   onSelectServer,
   onNewSession,
   onSelectSession,
@@ -62,6 +65,7 @@ export function ConfigPanel({
 }: Props) {
   const [activeTab, setActiveTab] = useState<SidebarTab>(activePage === 'monitoring' ? 'monitoring' : 'chats')
   const [serverModalOpen, setServerModalOpen] = useState(false)
+  const [editingServer, setEditingServer] = useState<A2AServer | null>(null)
   const [renameModalOpen, setRenameModalOpen] = useState(false)
   const [renamingSession, setRenamingSession] = useState<ChatSession | null>(null)
   const [draftSessionName, setDraftSessionName] = useState('')
@@ -95,13 +99,27 @@ export function ConfigPanel({
         return 'A2A Server'
       }
     })()
-    onSaveServer({
+    const nextServer = {
       name: draftName.trim() || fallbackName,
       endpoint: draftEndpoint.trim(),
       authToken: draftToken.trim(),
       headers,
-    })
+    }
+    if (editingServer) {
+      onUpdateServer(editingServer.id, nextServer)
+    } else {
+      onSaveServer(nextServer)
+    }
+    setEditingServer(null)
     setServerModalOpen(false)
+  }
+
+  const openServerModal = (server?: A2AServer) => {
+    setEditingServer(server ?? null)
+    setDraftName(server?.name ?? '')
+    setDraftEndpoint(server?.endpoint ?? endpoint)
+    setDraftToken(server?.authToken ?? authToken)
+    setServerModalOpen(true)
   }
 
   const openRenameModal = (session: ChatSession) => {
@@ -202,7 +220,7 @@ export function ConfigPanel({
               onNewSession()
             }}
           >
-            <BotMessageSquare size={24} />
+            <PlusCircle size={16} />
             New session
           </button>
           <div className="chat-session-list">
@@ -276,11 +294,7 @@ export function ConfigPanel({
           <button
             className="new-task-button"
             type="button"
-            onClick={() => {
-              setDraftEndpoint(endpoint)
-              setDraftToken(authToken)
-              setServerModalOpen(true)
-            }}
+            onClick={() => openServerModal()}
           >
             <PlusCircle size={16} />
             New server
@@ -293,13 +307,23 @@ export function ConfigPanel({
               </div>
             ) : (
               servers.map((server) => (
-                <button className="server-item" type="button" key={server.id} onClick={() => onSelectServer(server)}>
-                  <div>
-                    <strong>{server.name}</strong>
-                    <span>{server.endpoint}</span>
+                <div className="server-item" key={server.id}>
+                  <button className="server-select-button" type="button" onClick={() => onSelectServer(server)}>
+                    <div>
+                      <strong>{server.name}</strong>
+                      <span>{server.endpoint}</span>
+                    </div>
+                    {server.endpoint === endpoint ? <Check size={15} /> : null}
+                  </button>
+                  <div className="server-actions">
+                    <button className="icon-button subtle" type="button" onClick={() => openServerModal(server)} aria-label={`Edit ${server.name}`}>
+                      <Pencil size={14} />
+                    </button>
+                    <button className="icon-button subtle danger" type="button" onClick={() => onDeleteServer(server.id)} aria-label={`Delete ${server.name}`}>
+                      <Trash2 size={14} />
+                    </button>
                   </div>
-                  {server.endpoint === endpoint ? <Check size={15} /> : null}
-                </button>
+                </div>
               ))
             )}
           </div>
@@ -327,11 +351,26 @@ export function ConfigPanel({
       ) : null}
 
       {serverModalOpen ? (
-        <div className="modal-backdrop" role="presentation" onMouseDown={() => setServerModalOpen(false)}>
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={() => {
+            setEditingServer(null)
+            setServerModalOpen(false)
+          }}
+        >
           <form className="modal" onSubmit={submitServer} onMouseDown={(event) => event.stopPropagation()}>
             <div className="modal-heading">
-              <h2>Add A2A server</h2>
-              <button className="icon-button subtle" type="button" onClick={() => setServerModalOpen(false)} aria-label="Close server modal">
+              <h2>{editingServer ? 'Edit A2A server' : 'Add A2A server'}</h2>
+              <button
+                className="icon-button subtle"
+                type="button"
+                onClick={() => {
+                  setEditingServer(null)
+                  setServerModalOpen(false)
+                }}
+                aria-label="Close server modal"
+              >
                 <X size={15} />
               </button>
             </div>
@@ -359,7 +398,7 @@ export function ConfigPanel({
               />
             </label>
             <button className="primary-button" type="submit" disabled={!draftEndpoint.trim()}>
-              Save server
+              {editingServer ? 'Update server' : 'Save server'}
             </button>
           </form>
         </div>

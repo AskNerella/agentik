@@ -17,7 +17,7 @@ function buildHeaders(headers?: Record<string, string>, includeContentType = tru
 function normalizeFetchError(caught: unknown) {
   if (caught instanceof TypeError) {
     return new Error(
-      'Unable to fetch agent card. This is commonly caused by CORS. The agent card server must allow browser requests from this origin.',
+      'Agent card not found or unavailable. Check the URL, server status, and gateway configuration.',
     )
   }
 
@@ -46,16 +46,22 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
   }
 
   if (!response.ok) {
+    const statusText =
+      response.status === 404
+        ? 'Not Found'
+        : response.status === 504
+          ? 'Gateway Timeout'
+          : response.statusText || `HTTP ${response.status}`
     if (payload && typeof payload === 'object') {
       const record = payload as Record<string, unknown>
       throw new Error(
-        (typeof record.message === 'string' && record.message) ||
+          (typeof record.message === 'string' && record.message) ||
           (typeof record.error === 'string' && record.error) ||
-          `Request failed with ${response.status}`,
+          `Request failed: ${statusText}`,
       )
     }
 
-    throw new Error(typeof payload === 'string' && payload ? payload : `Request failed with ${response.status}`)
+    throw new Error(typeof payload === 'string' && payload ? payload : `Request failed: ${statusText}`)
   }
 
   return payload as T
@@ -322,7 +328,13 @@ export async function streamMessage(
 
   if (!response.ok) {
     const text = await response.text()
-    throw new Error(text || `Stream failed with ${response.status}`)
+    const statusText =
+      response.status === 404
+        ? 'Not Found'
+        : response.status === 504
+          ? 'Gateway Timeout'
+          : response.statusText || `HTTP ${response.status}`
+    throw new Error(text || `Stream failed: ${statusText}`)
   }
 
   if (!response.body) {

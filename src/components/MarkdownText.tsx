@@ -5,7 +5,7 @@ type Props = {
 }
 
 function formatInline(text: string) {
-  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g)
+  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)]+\))/g)
 
   return parts.map((part, index) => {
     if (part.startsWith('**') && part.endsWith('**')) {
@@ -16,6 +16,15 @@ function formatInline(text: string) {
       return <code key={index}>{part.slice(1, -1)}</code>
     }
 
+    const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/)
+    if (linkMatch) {
+      return (
+        <a key={index} href={linkMatch[2]} target="_blank" rel="noreferrer">
+          {linkMatch[1]}
+        </a>
+      )
+    }
+
     return part
   })
 }
@@ -23,22 +32,47 @@ function formatInline(text: string) {
 export function MarkdownText({ content }: Props) {
   const lines = content.split('\n')
   const blocks: ReactNode[] = []
-  let listItems: string[] = []
+  let listItems: { text: string; ordered: boolean }[] = []
+  let codeLines: string[] = []
+  let inCodeBlock = false
 
   const flushList = () => {
     if (listItems.length === 0) return
+    const ordered = listItems[0]?.ordered
+    const ListTag = ordered ? 'ol' : 'ul'
     blocks.push(
-      <ul key={`list-${blocks.length}`}>
+      <ListTag key={`list-${blocks.length}`}>
         {listItems.map((item, index) => (
-          <li key={index}>{formatInline(item)}</li>
+          <li key={index}>{formatInline(item.text)}</li>
         ))}
-      </ul>,
+      </ListTag>,
     )
     listItems = []
   }
 
+  const flushCode = () => {
+    if (codeLines.length === 0) return
+    blocks.push(
+      <pre key={`code-${blocks.length}`}>
+        <code>{codeLines.join('\n')}</code>
+      </pre>,
+    )
+    codeLines = []
+  }
+
   lines.forEach((line, index) => {
     const trimmed = line.trim()
+
+    if (trimmed.startsWith('```')) {
+      if (inCodeBlock) flushCode()
+      inCodeBlock = !inCodeBlock
+      return
+    }
+
+    if (inCodeBlock) {
+      codeLines.push(line)
+      return
+    }
 
     if (!trimmed) {
       flushList()
@@ -46,7 +80,13 @@ export function MarkdownText({ content }: Props) {
     }
 
     if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
-      listItems.push(trimmed.slice(2))
+      listItems.push({ text: trimmed.slice(2), ordered: false })
+      return
+    }
+
+    const orderedMatch = trimmed.match(/^\d+\.\s+(.+)$/)
+    if (orderedMatch) {
+      listItems.push({ text: orderedMatch[1], ordered: true })
       return
     }
 
@@ -67,10 +107,16 @@ export function MarkdownText({ content }: Props) {
       return
     }
 
+    if (trimmed.startsWith('> ')) {
+      blocks.push(<blockquote key={index}>{formatInline(trimmed.slice(2))}</blockquote>)
+      return
+    }
+
     blocks.push(<p key={index}>{formatInline(trimmed)}</p>)
   })
 
   flushList()
+  flushCode()
 
   return <div className="markdown-text">{blocks}</div>
 }

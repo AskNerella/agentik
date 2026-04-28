@@ -23,6 +23,8 @@ type Props = {
   onStreamingChange: (enabled: boolean) => void
   onSend: (message: string) => void
   onClear: () => void
+  selectedTraceMessageId: string | null
+  onSelectMessageTrace: (messageId: string | null) => void
 }
 
 export function ChatWindow({
@@ -43,6 +45,8 @@ export function ChatWindow({
   onStreamingChange,
   onSend,
   onClear,
+  selectedTraceMessageId,
+  onSelectMessageTrace,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
@@ -110,7 +114,11 @@ export function ChatWindow({
           </div>
         ) : (
           messages.map((message) => (
-            <article className={`message ${message.role} ${message.status === 'error' ? 'message-error' : ''}`} key={message.id}>
+            <article
+              className={`message ${message.role} ${message.status === 'error' ? 'message-error' : ''} ${selectedTraceMessageId === message.id ? 'message-selected' : ''}`}
+              key={message.id}
+              onClick={message.role === 'user' ? () => onSelectMessageTrace(selectedTraceMessageId === message.id ? null : message.id) : undefined}
+            >
               <div className="message-meta">{message.role === 'user' ? 'You' : 'Agent'}</div>
               {message.role === 'agent' && message.statusUpdates?.length ? (
                 <details className="agent-status-tracker" open={!message.trackerCollapsed}>
@@ -125,7 +133,7 @@ export function ChatWindow({
               <div className="message-body">
                 {message.content || message.isStreaming ? (
                   <>
-                    {message.role === 'agent' ? <MarkdownText content={message.content} /> : message.content}
+                    <MarkdownText content={message.content} />
                     {message.isStreaming ? (
                       <span className="thinking">
                         <Loader2 size={14} className="spin" />
