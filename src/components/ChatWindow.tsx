@@ -1,4 +1,4 @@
-import { Eraser, Loader2, MessageSquare, PlugZap } from 'lucide-react'
+import { Eraser, MessageSquare, PlugZap } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import type { FormEvent } from 'react'
 import type { A2AServer, ChatMessage } from '../types/a2a'
@@ -17,6 +17,7 @@ type Props = {
   agentLoading: boolean
   servers: A2AServer[]
   contextId: string
+  connectionStatus: 'checking' | 'online' | 'offline' | 'unknown'
   onEndpointChange: (value: string) => void
   onSelectServer: (server: A2AServer) => void
   onConnect: () => void
@@ -39,6 +40,7 @@ export function ChatWindow({
   agentLoading,
   servers,
   contextId,
+  connectionStatus,
   onEndpointChange,
   onSelectServer,
   onConnect,
@@ -65,7 +67,13 @@ export function ChatWindow({
         <div>
           <span className="eyebrow">A2A Playground</span>
           <h2>{endpointProvided ? sessionTitle : 'Connect an agent card'}</h2>
-          {endpointProvided ? <p className="context-id">Context ID: {contextId}</p> : null}
+          {endpointProvided ? (
+            <p className="context-id">
+              <span className={`status-dot status-${connectionStatus}`} aria-hidden="true" />
+              {connectionStatus === 'offline' ? 'Disconnected' : connectionStatus === 'checking' ? 'Checking connection...' : 'Connected'}
+              {' · '}Context ID: {contextId}
+            </p>
+          ) : null}
         </div>
         <div className="chat-heading-actions">
           <button className="icon-button" type="button" onClick={onClear} aria-label="Clear messages">
@@ -136,8 +144,12 @@ export function ChatWindow({
                     <MarkdownText content={message.content} />
                     {message.isStreaming ? (
                       <span className="thinking">
-                        <Loader2 size={14} className="spin" />
-                        Thinking...
+                        <span className="thinking-dots" aria-hidden="true">
+                          <span />
+                          <span />
+                          <span />
+                        </span>
+                        Thinking
                       </span>
                     ) : null}
                   </>

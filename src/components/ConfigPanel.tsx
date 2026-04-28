@@ -22,6 +22,7 @@ type Props = {
   headers: HeaderPair[]
   sessions: ChatSession[]
   servers: A2AServer[]
+  serverStatus: Record<string, 'checking' | 'online' | 'offline' | 'unknown'>
   activeSessionId: string
   onSaveServer: (server: Omit<A2AServer, 'id' | 'createdAt'>) => void
   onUpdateServer: (id: string, server: Omit<A2AServer, 'id' | 'createdAt'>) => void
@@ -30,6 +31,7 @@ type Props = {
   onNewSession: () => void
   onSelectSession: (id: string) => void
   onDeleteSession: (id: string) => void
+  onDeleteAllSessions: () => void
   onRenameSession: (id: string, title: string) => void
   onExportData: () => void
   onImportData: (file: File) => void
@@ -47,6 +49,7 @@ export function ConfigPanel({
   headers,
   sessions,
   servers,
+  serverStatus,
   activeSessionId,
   onSaveServer,
   onUpdateServer,
@@ -55,6 +58,7 @@ export function ConfigPanel({
   onNewSession,
   onSelectSession,
   onDeleteSession,
+  onDeleteAllSessions,
   onRenameSession,
   onExportData,
   onImportData,
@@ -73,7 +77,9 @@ export function ConfigPanel({
   const [draftEndpoint, setDraftEndpoint] = useState(endpoint)
   const [draftToken, setDraftToken] = useState(authToken)
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
+  const [openServerMenuId, setOpenServerMenuId] = useState<string | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
+  const serverMenuRef = useRef<HTMLDivElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
@@ -88,6 +94,19 @@ export function ConfigPanel({
     document.addEventListener('mousedown', closeOnOutsideClick)
     return () => document.removeEventListener('mousedown', closeOnOutsideClick)
   }, [openMenuId])
+
+  useEffect(() => {
+    if (!openServerMenuId) return
+
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!serverMenuRef.current?.contains(event.target as Node)) {
+        setOpenServerMenuId(null)
+      }
+    }
+
+    document.addEventListener('mousedown', closeOnOutsideClick)
+    return () => document.removeEventListener('mousedown', closeOnOutsideClick)
+  }, [openServerMenuId])
 
   const submitServer = (event: FormEvent) => {
     event.preventDefault()
@@ -211,72 +230,85 @@ export function ConfigPanel({
       </div>
 
       {activeTab === 'chats' ? (
-        <div className="sidebar-content">
-          <button
-            className="new-task-button"
-            type="button"
-            onClick={() => {
-              setActiveTab('chats')
-              onNewSession()
-            }}
-          >
-            <PlusCircle size={16} />
-            New session
-          </button>
+        <div className="sidebar-content chats-content">
+          <div className="list-toolbar">
+            <button
+              className="new-task-button"
+              type="button"
+              onClick={() => {
+                setActiveTab('chats')
+                onNewSession()
+              }}
+            >
+              <PlusCircle size={16} />
+              New session
+            </button>
+            {sessions.length > 0 ? (
+              <button className="icon-button subtle danger no-tooltip" type="button" onClick={onDeleteAllSessions} aria-label="Delete all chats">
+                <Trash2 size={15} />
+              </button>
+            ) : null}
+          </div>
           <div className="chat-session-list">
-            {sessions.map((session) => (
-              <div
-                className={`chat-session ${session.id === activeSessionId ? 'active' : ''}`}
-                key={session.id}
-              >
-                <button
-                  className="chat-session-main"
-                  type="button"
-                  onClick={() => {
-                    setActiveTab('chats')
-                    onSelectSession(session.id)
-                  }}
-                >
-                  <div>
-                    <strong>{session.title}</strong>
-                    <span>{session.subtitle}</span>
-                  </div>
-                </button>
-                <div className="session-actions" ref={openMenuId === session.id ? menuRef : null}>
-                  <button
-                    className="session-more-button"
-                    type="button"
-                    onClick={() => setOpenMenuId(openMenuId === session.id ? null : session.id)}
-                    aria-label="More session options"
-                  >
-                    <MoreVertical size={16} />
-                  </button>
-                  {openMenuId === session.id ? (
-                    <div className="session-menu">
-                      <button type="button" onClick={() => exportSession(session)}>
-                        <Download size={14} />
-                        Export
-                      </button>
-                      <button type="button" onClick={() => openRenameModal(session)}>
-                        <Pencil size={14} />
-                        Rename
-                      </button>
-                      <button
-                        className="danger"
-                        type="button"
-                        onClick={() => {
-                          onDeleteSession(session.id)
-                          setOpenMenuId(null)
-                        }}
-                      >
-                        <Trash2 size={14} />
-                        Delete
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
+            {sessions.length === 0 ? (
+              <div className="sidebar-empty">
+                <p>No chats yet. Create a session when you are ready to prompt.</p>
               </div>
-            ))}
+            ) : (
+              sessions.map((session) => (
+                <div
+                  className={`chat-session ${session.id === activeSessionId ? 'active' : ''}`}
+                  key={session.id}
+                >
+                  <button
+                    className="chat-session-main"
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('chats')
+                      onSelectSession(session.id)
+                    }}
+                  >
+                    <div>
+                      <strong>{session.title}</strong>
+                      <span>{session.subtitle}</span>
+                    </div>
+                  </button>
+                  <div className="session-actions" ref={openMenuId === session.id ? menuRef : null}>
+                    <button
+                      className="session-more-button"
+                      type="button"
+                      onClick={() => setOpenMenuId(openMenuId === session.id ? null : session.id)}
+                      aria-label="More session options"
+                    >
+                      <MoreVertical size={16} />
+                    </button>
+                    {openMenuId === session.id ? (
+                      <div className="session-menu">
+                        <button type="button" onClick={() => exportSession(session)}>
+                          <Download size={14} />
+                          Export
+                        </button>
+                        <button type="button" onClick={() => openRenameModal(session)}>
+                          <Pencil size={14} />
+                          Rename
+                        </button>
+                        <button
+                          className="danger"
+                          type="button"
+                          onClick={() => {
+                            onDeleteSession(session.id)
+                            setOpenMenuId(null)
+                          }}
+                        >
+                          <Trash2 size={14} />
+                          Delete
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       ) : activeTab === 'monitoring' ? (
@@ -290,7 +322,7 @@ export function ConfigPanel({
           </div>
         </div>
       ) : (
-        <div className="sidebar-content">
+        <div className="sidebar-content servers-content">
           <button
             className="new-task-button"
             type="button"
@@ -310,18 +342,56 @@ export function ConfigPanel({
                 <div className="server-item" key={server.id}>
                   <button className="server-select-button" type="button" onClick={() => onSelectServer(server)}>
                     <div>
-                      <strong>{server.name}</strong>
-                      <span>{server.endpoint}</span>
+                      <strong>
+                        <span className={`status-dot status-${serverStatus[server.id] ?? 'unknown'}`} aria-hidden="true" />
+                        {server.name}
+                      </strong>
+                      <span>
+                        {serverStatus[server.id] === 'online'
+                          ? 'Available'
+                          : serverStatus[server.id] === 'checking'
+                            ? 'Checking availability...'
+                            : serverStatus[server.id] === 'offline'
+                              ? 'Unavailable'
+                              : 'Status unknown'}
+                      </span>
                     </div>
                     {server.endpoint === endpoint ? <Check size={15} /> : null}
                   </button>
-                  <div className="server-actions">
-                    <button className="icon-button subtle" type="button" onClick={() => openServerModal(server)} aria-label={`Edit ${server.name}`}>
-                      <Pencil size={14} />
+                  <div className="session-actions" ref={openServerMenuId === server.id ? serverMenuRef : null}>
+                    <button
+                      className="session-more-button server-more-button"
+                      type="button"
+                      onClick={() => setOpenServerMenuId(openServerMenuId === server.id ? null : server.id)}
+                      aria-label={`More options for ${server.name}`}
+                    >
+                      <MoreVertical size={16} />
                     </button>
-                    <button className="icon-button subtle danger" type="button" onClick={() => onDeleteServer(server.id)} aria-label={`Delete ${server.name}`}>
-                      <Trash2 size={14} />
-                    </button>
+                    {openServerMenuId === server.id ? (
+                      <div className="session-menu">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            openServerModal(server)
+                            setOpenServerMenuId(null)
+                          }}
+                        >
+                          <Pencil size={14} />
+                          Edit
+                        </button>
+                        <button
+                          className="danger"
+                          type="button"
+                          onClick={() => {
+                            onDeleteServer(server.id)
+                            setOpenServerMenuId(null)
+                          }}
+                        >
+                          <Trash2 size={14} />
+                          Delete
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               ))

@@ -5,7 +5,7 @@ type Props = {
 }
 
 function formatInline(text: string) {
-  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)]+\))/g)
+  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)]+\)|\(?https?:\/\/[^\s)]+(?:\))?)/g)
 
   return parts.map((part, index) => {
     if (part.startsWith('**') && part.endsWith('**')) {
@@ -21,6 +21,15 @@ function formatInline(text: string) {
       return (
         <a key={index} href={linkMatch[2]} target="_blank" rel="noreferrer">
           {linkMatch[1]}
+        </a>
+      )
+    }
+
+    const bareUrlMatch = part.match(/^\(?((?:https?:\/\/)[^\s)]+)\)?$/)
+    if (bareUrlMatch) {
+      return (
+        <a key={index} href={bareUrlMatch[1]} target="_blank" rel="noreferrer">
+          {bareUrlMatch[1]}
         </a>
       )
     }
@@ -87,6 +96,13 @@ export function MarkdownText({ content }: Props) {
     const orderedMatch = trimmed.match(/^\d+\.\s+(.+)$/)
     if (orderedMatch) {
       listItems.push({ text: orderedMatch[1], ordered: true })
+      return
+    }
+
+    // Support wrapped list item content on the next indented line.
+    if (listItems.length > 0 && /^\s+/.test(line)) {
+      const last = listItems[listItems.length - 1]
+      last.text = `${last.text}\n${trimmed}`
       return
     }
 

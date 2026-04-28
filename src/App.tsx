@@ -12,6 +12,7 @@ import { validateAgentCard } from './utils/agentCardValidation'
 
 const STORAGE_KEY = 'agentik.a2a-playground.v1'
 type AppPage = 'playground' | 'monitoring'
+type ConnectionStatus = 'checking' | 'online' | 'offline' | 'unknown'
 
 function loadStoredData(): Partial<PlaygroundExport> {
   try {
@@ -38,8 +39,6 @@ function buildHeaderMap(headers: HeaderPair[], authToken: string) {
 }
 
 function App() {
-  const initialSessionId = useMemo(() => crypto.randomUUID(), [])
-  const initialContextId = useMemo(() => crypto.randomUUID(), [])
   const storedData = useMemo(() => loadStoredData(), [])
   const [endpoint, setEndpoint] = useState('')
   const [endpointProvided, setEndpointProvided] = useState(false)
@@ -51,26 +50,12 @@ function App() {
   const [inspectorExpanded, setInspectorExpanded] = useState(false)
   const [activePage, setActivePage] = useState<AppPage>('playground')
   const [selectedTraceMessageId, setSelectedTraceMessageId] = useState<string | null>(null)
-  const [activeSessionId, setActiveSessionId] = useState<string>(storedData.sessions?.[0]?.id ?? initialSessionId)
-  const [activeContextId, setActiveContextId] = useState<string>(storedData.sessions?.[0]?.contextId ?? initialContextId)
-  const [sessions, setSessions] = useState<ChatSession[]>(
-    storedData.sessions?.length
-      ? storedData.sessions
-      : [
-          {
-            id: initialSessionId,
-            title: 'New agent session',
-            subtitle: 'No messages yet',
-            messages: [],
-            endpoint: '',
-            contextId: initialContextId,
-            connected: false,
-            updatedAt: new Date().toISOString(),
-          },
-        ],
-  )
+  const [activeSessionId, setActiveSessionId] = useState<string>(storedData.sessions?.[0]?.id ?? '')
+  const [activeContextId, setActiveContextId] = useState<string>(storedData.sessions?.[0]?.contextId ?? crypto.randomUUID())
+  const [sessions, setSessions] = useState<ChatSession[]>(storedData.sessions ?? [])
   const [servers, setServers] = useState<A2AServer[]>(storedData.servers ?? [])
   const [headers, setHeaders] = useState<HeaderPair[]>([])
+  const [serverStatus, setServerStatus] = useState<Record<string, ConnectionStatus>>({})
 
   const { logs, appendTrace, clearLogs, setLogs } = useTrace(storedData.traces ?? [])
   const { card, setCard, clearAgentCard, validation, loading: agentLoading, error: agentError, loadAgentCard } = useAgent(appendTrace)
@@ -80,7 +65,6 @@ function App() {
     loading: chatLoading,
     error: chatError,
     sendChatMessage,
-    clearMessages,
   } = useChat(appendTrace, storedData.sessions?.[0]?.messages ?? [])
 
   const requestHeaders = useMemo(() => buildHeaderMap(headers, authToken), [headers, authToken])
@@ -104,6 +88,11 @@ function App() {
         : activeSessionLogs,
     [activeSessionLogs, selectedTraceMessageId],
   )
+  const activeServerId = useMemo(
+    () => servers.find((server) => server.endpoint === endpoint)?.id,
+    [endpoint, servers],
+  )
+  const activeConnectionStatus = activeServerId ? serverStatus[activeServerId] ?? 'unknown' : endpointProvided ? 'online' : 'unknown'
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -121,6 +110,7 @@ function App() {
   }, [logs, servers, sessions])
 
   useEffect(() => {
+    if (!activeSessionId) return
     const timer = window.setTimeout(() => {
       setSessions((current) =>
         current.map((session) =>
@@ -146,6 +136,41 @@ function App() {
 
     return () => window.clearTimeout(timer)
   }, [activeContextId, activeSessionId, card, endpoint, endpointProvided, messages])
+
+  useEffect(() => {
+    if (servers.length === 0) return
+
+    let cancelled = false
+    const checkServer = async (server: A2AServer) => {
+      setServerStatus((current) => ({ ...current, [server.id]: 'checking' }))
+      try {
+        const response = await fetch(server.endpoint, {
+          method: 'GET',
+          headers: buildHeaderMap(server.headers, server.authToken),
+        })
+        if (!cancelled) {
+          setServerStatus((current) => ({ ...current, [server.id]: response.ok ? 'online' : 'offline' }))
+        }
+      } catch {
+        if (!cancelled) {
+          setServerStatus((current) => ({ ...current, [server.id]: 'offline' }))
+        }
+      }
+    }
+
+    const runChecks = () => {
+      servers.forEach((server) => {
+        void checkServer(server)
+      })
+    }
+
+    runChecks()
+    const interval = window.setInterval(runChecks, 15000)
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [servers])
 
   useEffect(() => {
     if (!notification) return undefined
@@ -179,30 +204,39 @@ function App() {
     setNotification(null)
   }
 
-  const handleNewSession = () => {
+  const createSession = ({ keepConnection = false }: { keepConnection?: boolean } = {}) => {
     const id = crypto.randomUUID()
     const contextId = crypto.randomUUID()
+    const nextSession: ChatSession = {
+      id,
+      title: 'New agent session',
+      subtitle: 'No messages yet',
+      messages: [],
+      endpoint: keepConnection ? endpoint : '',
+      contextId,
+      connected: keepConnection ? endpointProvided : false,
+      agentCard: keepConnection ? card ?? null : null,
+      updatedAt: new Date().toISOString(),
+    }
     setSessions((current) => [
-      {
-        id,
-        title: 'New agent session',
-        subtitle: 'No messages yet',
-        messages: [],
-        endpoint: '',
-        contextId,
-        connected: false,
-        updatedAt: new Date().toISOString(),
-      },
+      nextSession,
       ...current,
     ])
     setActiveSessionId(id)
     setActiveContextId(contextId)
     setActivePage('playground')
     setMessages([])
-    setEndpoint('')
-    setEndpointProvided(false)
-    clearAgentCard()
+    if (!keepConnection) {
+      setEndpoint('')
+      setEndpointProvided(false)
+      clearAgentCard()
+    }
     setSelectedTraceMessageId(null)
+    return { id, contextId }
+  }
+
+  const handleNewSession = () => {
+    createSession({ keepConnection: false })
   }
 
   const handleSelectSession = (id: string) => {
@@ -221,28 +255,36 @@ function App() {
 
   const handleDeleteSession = (id: string) => {
     const remaining = sessions.filter((session) => session.id !== id)
-    const fallbackSession: ChatSession = {
-      id: crypto.randomUUID(),
-      title: 'New agent session',
-      subtitle: 'No messages yet',
-      messages: [],
-      endpoint: '',
-      contextId: crypto.randomUUID(),
-      connected: false,
-      updatedAt: new Date().toISOString(),
-    }
-    const nextSessions = remaining.length > 0 ? remaining : [fallbackSession]
+    const nextSessions = remaining
     setSessions(nextSessions)
     if (id === activeSessionId) {
       const nextSession = nextSessions[0]
-      setActiveSessionId(nextSession.id)
-      setActiveContextId(nextSession.contextId)
-      setMessages(nextSession.messages)
-      setEndpoint(nextSession.endpoint)
-      setEndpointProvided(nextSession.connected)
-      setCard(nextSession.agentCard ?? null)
+      if (nextSession) {
+        setActiveSessionId(nextSession.id)
+        setActiveContextId(nextSession.contextId)
+        setMessages(nextSession.messages)
+        setEndpoint(nextSession.endpoint)
+        setEndpointProvided(nextSession.connected)
+        setCard(nextSession.agentCard ?? null)
+      } else {
+        setActiveSessionId('')
+        setActiveContextId(crypto.randomUUID())
+        setMessages([])
+        setEndpoint('')
+        setEndpointProvided(false)
+        clearAgentCard()
+      }
       setSelectedTraceMessageId(null)
     }
+  }
+
+  const handleDeleteAllSessions = () => {
+    setSessions([])
+    setActiveSessionId('')
+    setActiveContextId(crypto.randomUUID())
+    setMessages([])
+    setSelectedTraceMessageId(null)
+    setNotification('All chats deleted.')
   }
 
   const handleRenameSession = (id: string, title: string) => {
@@ -330,6 +372,11 @@ function App() {
       setEndpointProvided(false)
       clearAgentCard()
     }
+    setServerStatus((current) => {
+      const next = { ...current }
+      delete next[id]
+      return next
+    })
   }
 
   const handleSelectServer = (server: A2AServer) => {
@@ -343,7 +390,16 @@ function App() {
 
   const handleSendMessage = (message: string) => {
     if (!activeMessageEndpoint.trim()) return
-    sendChatMessage(activeMessageEndpoint.trim(), message, streaming, activeContextId, requestHeaders)
+    const contextId = activeSessionId ? activeContextId : createSession({ keepConnection: true }).contextId
+    sendChatMessage(activeMessageEndpoint.trim(), message, streaming, contextId, requestHeaders)
+  }
+
+  const handleClearAndStartNewSession = () => {
+    if (!activeSessionId) return
+    const previousSessionId = activeSessionId
+    createSession({ keepConnection: true })
+    setSessions((current) => current.filter((session) => session.id !== previousSessionId))
+    setNotification('Started a new session.')
   }
 
   const handleReplayTrace = (trace: TraceLog) => {
@@ -399,6 +455,7 @@ function App() {
         headers={headers}
         sessions={sessions}
         servers={servers}
+        serverStatus={serverStatus}
         activeSessionId={activeSessionId}
         onSaveServer={handleSaveServer}
         onUpdateServer={handleUpdateServer}
@@ -407,6 +464,7 @@ function App() {
         onNewSession={handleNewSession}
         onSelectSession={handleSelectSession}
         onDeleteSession={handleDeleteSession}
+        onDeleteAllSessions={handleDeleteAllSessions}
         onRenameSession={handleRenameSession}
         onExportData={handleExportData}
         onImportData={handleImportData}
@@ -441,8 +499,9 @@ function App() {
             onConnect={handleFetchAgentCard}
             onStreamingChange={setStreaming}
             onSend={handleSendMessage}
-            onClear={clearMessages}
+            onClear={handleClearAndStartNewSession}
             contextId={activeContextId}
+            connectionStatus={activeConnectionStatus}
             selectedTraceMessageId={selectedTraceMessageId}
             onSelectMessageTrace={(messageId) => setSelectedTraceMessageId(messageId)}
           />

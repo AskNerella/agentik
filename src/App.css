@@ -136,10 +136,19 @@
 
 .sidebar-content {
   min-height: 0;
-  overflow: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
   padding-right: 2px;
   padding-top: 22px;
+  padding-bottom: 14px;
   animation: fade-slide 180ms ease both;
+}
+
+.chats-content,
+.servers-content {
+  overflow: auto;
 }
 
 .sidebar-actions {
@@ -211,11 +220,33 @@
   /* background: var(--accent); */
 }
 
+.list-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.list-toolbar .new-task-button {
+  flex: 1;
+}
+
 .chat-session-list,
 .server-list {
   display: grid;
   gap: 2px;
   margin-top: 14px;
+  align-content: start;
+}
+
+.chat-session-list {
+  overflow: visible;
+  padding-bottom: 6px;
+}
+
+.server-list {
+  overflow: visible;
+  margin-inline: 4px;
+  padding-bottom: 6px;
 }
 
 .chat-session,
@@ -248,7 +279,9 @@
 .chat-session strong,
 .server-item strong,
 .server-select-button strong {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   max-width: 100%;
   overflow: hidden;
   color: var(--text);
@@ -352,9 +385,11 @@
 
 .session-actions {
   position: relative;
+  z-index: 2;
 }
 
 .chat-session:hover .session-more-button,
+.server-item:hover .session-more-button,
 .session-actions:has(.session-menu) .session-more-button,
 .session-more-button:focus-visible {
   opacity: 1;
@@ -367,8 +402,8 @@
 
 .session-menu {
   position: absolute;
-  z-index: 5;
-  top: 42px;
+  z-index: 140;
+  top: calc(100% + 6px);
   right: 4px;
   min-width: 128px;
   border: 1px solid var(--border);
@@ -377,6 +412,14 @@
   background: var(--surface-strong);
   box-shadow: 0 12px 34px rgba(23, 21, 18, 0.12);
   animation: fade-slide 130ms ease both;
+}
+
+.session-actions:has(.session-menu) {
+  z-index: 150;
+}
+
+.server-more-button {
+  opacity: 1;
 }
 
 .session-menu button {
@@ -486,6 +529,9 @@ p {
 
 .context-id {
   margin-top: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: var(--faint);
   font-size: 12px;
   font-weight: 700;
@@ -649,6 +695,19 @@ textarea::placeholder {
   transform: translate(0, -3px);
 }
 
+.chat-heading-actions .icon-button::after {
+  right: 0;
+  left: auto;
+  transform: translate(0, -3px);
+}
+
+.list-toolbar .icon-button::after,
+.session-actions .session-more-button::after {
+  right: 0;
+  left: auto;
+  transform: translate(0, -3px);
+}
+
 .icon-button:hover::after,
 .icon-button:focus-visible::after,
 .send-button:hover::after,
@@ -664,8 +723,18 @@ textarea::placeholder {
 .inspector-collapsed .icon-button:hover::after,
 .inspector-collapsed .icon-button:focus-visible::after,
 .config-collapsed .icon-button:hover::after,
-.config-collapsed .icon-button:focus-visible::after {
+.config-collapsed .icon-button:focus-visible::after,
+.chat-heading-actions .icon-button:hover::after,
+.chat-heading-actions .icon-button:focus-visible::after,
+.list-toolbar .icon-button:hover::after,
+.list-toolbar .icon-button:focus-visible::after,
+.session-actions .session-more-button:hover::after,
+.session-actions .session-more-button:focus-visible::after {
   transform: translate(0, 0);
+}
+
+.no-tooltip::after {
+  display: none;
 }
 
 .icon-button:hover,
@@ -818,6 +887,8 @@ textarea::placeholder {
   top: 0;
   z-index: 4;
   background: var(--surface);
+  border-bottom: 0.5px solid var(--border);
+  padding-bottom: 10px;
 }
 
 .messages {
@@ -862,7 +933,9 @@ textarea::placeholder {
 }
 
 .message-selected .message-body {
-  outline: 3px solid rgba(47, 120, 183, 0.2);
+  outline: 2px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  background: var(--accent);
+  color: #fff;
   transform: translateY(-1px);
 }
 
@@ -888,6 +961,16 @@ textarea::placeholder {
 .message.user .message-body {
   border-color: transparent;
   background: var(--text);
+  color: #fff;
+}
+
+.message.user .message-body .markdown-text,
+.message.user .message-body .markdown-text :is(p, li, h2, h3, h4, strong, em, code, blockquote) {
+  color: #fff;
+}
+
+.message.user.message-selected .message-body {
+  background: var(--accent);
   color: #fff;
 }
 
@@ -931,6 +1014,53 @@ textarea::placeholder {
   color: var(--muted);
   font-size: 13px;
   font-weight: 700;
+}
+
+.thinking-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.thinking-dots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  animation: thinking-bounce 900ms ease-in-out infinite;
+}
+
+.thinking-dots span:nth-child(2) {
+  animation-delay: 120ms;
+}
+
+.thinking-dots span:nth-child(3) {
+  animation-delay: 240ms;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  background: var(--faint);
+}
+
+.status-online {
+  background: #2f9e5f;
+}
+
+.status-offline {
+  background: var(--danger);
+}
+
+.status-checking {
+  background: #c18b3f;
+  animation: pulse-dot 1.2s ease infinite;
+}
+
+.status-unknown {
+  background: var(--faint);
 }
 
 .markdown-text {
@@ -2049,6 +2179,29 @@ pre {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes thinking-bounce {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  40% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
   }
 }
 
