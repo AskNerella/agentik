@@ -25,11 +25,11 @@ function normalizeFetchError(caught: unknown) {
 }
 
 function toProxyUrl(endpoint: string) {
-  if (!import.meta.env.DEV) return endpoint
-
   try {
     const url = new URL(endpoint)
-    return `/api${url.pathname}${url.search}`
+    if (!['http:', 'https:'].includes(url.protocol)) return endpoint
+    const proxyBase = import.meta.env.VITE_A2A_PROXY_BASE || '/proxy/request'
+    return `${proxyBase}?url=${encodeURIComponent(url.toString())}`
   } catch {
     return endpoint
   }
@@ -142,6 +142,29 @@ function summarizeA2AEvent(value: unknown): string | null {
   return null
 }
 
+function getA2AState(value: unknown) {
+  if (!value || typeof value !== 'object') return null
+
+  const record = value as Record<string, unknown>
+  const result = record.result && typeof record.result === 'object' ? (record.result as Record<string, unknown>) : record
+  const status = result.status && typeof result.status === 'object' ? (result.status as Record<string, unknown>) : null
+
+  return typeof result.state === 'string' ? result.state : status && typeof status.state === 'string' ? status.state : null
+}
+
+function summarizeFailedA2AEvent(value: unknown) {
+  if (!value || typeof value !== 'object') return 'Task failed.'
+
+  const record = value as Record<string, unknown>
+  const result = record.result && typeof record.result === 'object' ? (record.result as Record<string, unknown>) : record
+  const status = result.status && typeof result.status === 'object' ? (result.status as Record<string, unknown>) : null
+  const id = typeof result.id === 'string' ? result.id : typeof result.taskId === 'string' ? result.taskId : null
+  const detail = extractText(status?.message ?? status ?? result)
+
+  if (detail && !/^failed$/i.test(detail.trim())) return id ? `Task ${id} failed: ${detail}` : `Task failed: ${detail}`
+  return id ? `Task ${id} failed.` : 'Task failed.'
+}
+
 function extractArtifact(value: unknown) {
   if (!value || typeof value !== 'object') return null
 
@@ -197,8 +220,7 @@ function isFinalA2AEvent(value: unknown) {
 
   const record = value as Record<string, unknown>
   const result = record.result && typeof record.result === 'object' ? (record.result as Record<string, unknown>) : record
-  const status = result.status && typeof result.status === 'object' ? (result.status as Record<string, unknown>) : null
-  const state = typeof result.state === 'string' ? result.state : status && typeof status.state === 'string' ? status.state : null
+  const state = getA2AState(value)
 
   return (
     record.lastChunk === true ||
@@ -222,10 +244,13 @@ function normalizeMessageResponse(response: unknown): MessageResponse {
   }
 
   const artifacts = extractArtifacts(response)
+  const failed = getA2AState(response) === 'failed'
 
   return {
-    reply: extractText(response) || summarizeA2AEvent(response) || JSON.stringify(response, null, 2),
-    status: 'ok',
+    reply: failed
+      ? summarizeFailedA2AEvent(response)
+      : extractText(response) || summarizeA2AEvent(response) || JSON.stringify(response, null, 2),
+    status: failed ? 'error' : 'ok',
     artifacts,
   }
 }
@@ -290,6 +315,10 @@ function parseStreamLine(line: string): StreamChunk | null {
 
     if (typeof parsed.token === 'string') {
       return { type: 'token', content: parsed.token }
+    }
+
+    if (getA2AState(parsed) === 'failed') {
+      return { type: 'error', content: summarizeFailedA2AEvent(parsed), final: true, raw: parsed }
     }
 
     const final = isFinalA2AEvent(parsed)

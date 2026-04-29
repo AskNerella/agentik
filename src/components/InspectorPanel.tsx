@@ -29,6 +29,7 @@ type Props = {
 }
 
 type InspectorTab = 'analytics' | 'agent' | 'artifacts' | 'traces'
+type ArtifactSort = 'newest' | 'oldest' | 'name'
 
 function JsonBlock({ value, raw }: { value: unknown; raw?: boolean }) {
   return <pre>{typeof value === 'string' ? value : JSON.stringify(value, null, raw ? 0 : 2)}</pre>
@@ -59,12 +60,22 @@ export function InspectorPanel({
   const [rawTracePayload, setRawTracePayload] = useState(false)
   const [jsonOpen, setJsonOpen] = useState(false)
   const [expandedSkillIds, setExpandedSkillIds] = useState<Set<string>>(new Set())
+  const [artifactSort, setArtifactSort] = useState<ArtifactSort>('newest')
   const longestTrace = Math.max(1, ...logs.map((log) => log.durationMs))
   const requestLogs = useMemo(() => logs.filter((log) => log.kind === 'request'), [logs])
   const streamLogs = useMemo(() => logs.filter((log) => log.kind === 'stream'), [logs])
   const visibleLogs = useMemo(() => {
     return logs
   }, [logs])
+  const sortedArtifacts = useMemo(() => {
+    return [...artifacts].sort((left, right) => {
+      if (artifactSort === 'name') return left.name.localeCompare(right.name)
+
+      const leftTime = new Date(left.createdAt).getTime()
+      const rightTime = new Date(right.createdAt).getTime()
+      return artifactSort === 'newest' ? rightTime - leftTime : leftTime - rightTime
+    })
+  }, [artifactSort, artifacts])
 
   const toggleSkill = (id: string) => {
     setExpandedSkillIds((current) => {
@@ -206,12 +217,20 @@ export function InspectorPanel({
           <section className="inspector-pane">
             <div className="context-card-heading">
               <h3>Artifacts</h3>
+              <label className="compact-select">
+                <span>Sort</span>
+                <select value={artifactSort} onChange={(event) => setArtifactSort(event.target.value as ArtifactSort)}>
+                  <option value="newest">Latest first</option>
+                  <option value="oldest">Oldest first</option>
+                  <option value="name">Name</option>
+                </select>
+              </label>
             </div>
-            {artifacts.length === 0 ? (
+            {sortedArtifacts.length === 0 ? (
               <div className="inspector-empty">No Information</div>
             ) : (
               <div className="artifact-list">
-                {artifacts.map((artifact) => (
+                {sortedArtifacts.map((artifact) => (
                   <article key={artifact.id}>
                     <strong>{artifact.name}</strong>
                     <span>{new Date(artifact.createdAt).toLocaleTimeString()}</span>
@@ -230,7 +249,7 @@ export function InspectorPanel({
                 <h3>Traces</h3>
                 <p className="trace-context-label">{traceFilterLabel}</p>
               </div>
-              <button className="icon-button subtle" type="button" onClick={handleClearTraces} aria-label="Clear traces">
+              <button className="icon-button subtle no-tooltip" type="button" onClick={handleClearTraces} aria-label="Clear traces">
                 <Trash2 size={15} />
               </button>
             </div>

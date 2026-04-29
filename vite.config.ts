@@ -4,23 +4,22 @@ import dns from 'node:dns'
 
 dns.setDefaultResultOrder('ipv4first')
 
-const apiProxy = {
-  target: 'http://localhost:8081',
+const proxyApi = {
+  target: 'http://localhost:8089',
   changeOrigin: false,
   secure: false,
-  rewrite: (path: string) => path.replace(/^\/api/, ''),
 }
 
 export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/api': apiProxy,
+      '/proxy': proxyApi,
     },
   },
   preview: {
     proxy: {
-      '/api': apiProxy,
+      '/proxy': proxyApi,
     },
   },
 })

@@ -62,6 +62,8 @@ export type HeaderPair = {
   value: string
 }
 
+export type AuthMode = 'none' | 'bearer' | 'oauth2'
+
 export type ChatMessage = {
   id: string
   role: 'user' | 'agent' | 'system'
@@ -107,7 +109,9 @@ export type A2AServer = {
   id: string
   name: string
   endpoint: string
+  authMode?: AuthMode
   authToken: string
+  oauthToken?: string
   headers: HeaderPair[]
   createdAt: string
 }

@@ -1,5 +1,6 @@
 import {
   Check,
+  ChevronDown,
   LineChart,
   MoreVertical,
   PanelLeftClose,
@@ -14,11 +15,13 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
-import type { A2AServer, ChatSession, HeaderPair } from '../types/a2a'
+import type { A2AServer, AuthMode, ChatSession, HeaderPair } from '../types/a2a'
 
 type Props = {
   endpoint: string
+  authMode: AuthMode
   authToken: string
+  oauthToken: string
   headers: HeaderPair[]
   sessions: ChatSession[]
   servers: A2AServer[]
@@ -45,7 +48,9 @@ type SidebarTab = 'chats' | 'servers' | 'monitoring'
 
 export function ConfigPanel({
   endpoint,
+  authMode,
   authToken,
+  oauthToken,
   headers,
   sessions,
   servers,
@@ -75,7 +80,11 @@ export function ConfigPanel({
   const [draftSessionName, setDraftSessionName] = useState('')
   const [draftName, setDraftName] = useState('')
   const [draftEndpoint, setDraftEndpoint] = useState(endpoint)
+  const [draftAuthMode, setDraftAuthMode] = useState<AuthMode>(authMode)
   const [draftToken, setDraftToken] = useState(authToken)
+  const [draftOauthToken, setDraftOauthToken] = useState(oauthToken)
+  const [draftHeaders, setDraftHeaders] = useState<HeaderPair[]>(headers)
+  const [draftAuthMenuOpen, setDraftAuthMenuOpen] = useState(false)
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [openServerMenuId, setOpenServerMenuId] = useState<string | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
@@ -121,8 +130,10 @@ export function ConfigPanel({
     const nextServer = {
       name: draftName.trim() || fallbackName,
       endpoint: draftEndpoint.trim(),
+      authMode: draftAuthMode,
       authToken: draftToken.trim(),
-      headers,
+      oauthToken: draftOauthToken.trim(),
+      headers: draftHeaders.filter((header) => header.key.trim() && header.value.trim()),
     }
     if (editingServer) {
       onUpdateServer(editingServer.id, nextServer)
@@ -130,6 +141,7 @@ export function ConfigPanel({
       onSaveServer(nextServer)
     }
     setEditingServer(null)
+    setDraftAuthMenuOpen(false)
     setServerModalOpen(false)
   }
 
@@ -137,8 +149,24 @@ export function ConfigPanel({
     setEditingServer(server ?? null)
     setDraftName(server?.name ?? '')
     setDraftEndpoint(server?.endpoint ?? endpoint)
+    setDraftAuthMode(server?.authMode ?? (server?.oauthToken ? 'oauth2' : server?.authToken ? 'bearer' : authMode))
     setDraftToken(server?.authToken ?? authToken)
+    setDraftOauthToken(server?.oauthToken ?? oauthToken)
+    setDraftHeaders(server?.headers ?? headers)
+    setDraftAuthMenuOpen(false)
     setServerModalOpen(true)
+  }
+
+  const addDraftHeader = () => {
+    setDraftHeaders((current) => [...current, { id: crypto.randomUUID(), key: '', value: '' }])
+  }
+
+  const updateDraftHeader = (id: string, field: 'key' | 'value', value: string) => {
+    setDraftHeaders((current) => current.map((header) => (header.id === id ? { ...header, [field]: value } : header)))
+  }
+
+  const removeDraftHeader = (id: string) => {
+    setDraftHeaders((current) => current.filter((header) => header.id !== id))
   }
 
   const openRenameModal = (session: ChatSession) => {
@@ -153,6 +181,12 @@ export function ConfigPanel({
     if (!renamingSession) return
     onRenameSession(renamingSession.id, draftSessionName)
     setRenameModalOpen(false)
+  }
+
+  const authLabels: Record<AuthMode, string> = {
+    none: 'No auth',
+    bearer: 'Bearer token',
+    oauth2: 'OAuth 2.0 access token',
   }
 
   const exportSession = (session: ChatSession) => {
@@ -426,6 +460,7 @@ export function ConfigPanel({
           role="presentation"
           onMouseDown={() => {
             setEditingServer(null)
+            setDraftAuthMenuOpen(false)
             setServerModalOpen(false)
           }}
         >
@@ -437,6 +472,7 @@ export function ConfigPanel({
                 type="button"
                 onClick={() => {
                   setEditingServer(null)
+                  setDraftAuthMenuOpen(false)
                   setServerModalOpen(false)
                 }}
                 aria-label="Close server modal"
@@ -458,15 +494,81 @@ export function ConfigPanel({
               />
             </label>
             <label>
-              Bearer token
-              <input
-                type="password"
-                value={draftToken}
-                onChange={(event) => setDraftToken(event.target.value)}
-                placeholder="Optional"
-                autoComplete="off"
-              />
+              Auth type
+              <div className="auth-select">
+                <button type="button" onClick={() => setDraftAuthMenuOpen((open) => !open)} aria-expanded={draftAuthMenuOpen}>
+                  {authLabels[draftAuthMode]}
+                  <ChevronDown size={15} className={draftAuthMenuOpen ? 'rotated' : ''} />
+                </button>
+                {draftAuthMenuOpen ? (
+                  <div className="auth-menu">
+                    {(['none', 'bearer', 'oauth2'] as AuthMode[]).map((mode) => (
+                      <button
+                        className={draftAuthMode === mode ? 'active' : ''}
+                        type="button"
+                        key={mode}
+                        onClick={() => {
+                          setDraftAuthMode(mode)
+                          setDraftAuthMenuOpen(false)
+                        }}
+                      >
+                        {authLabels[mode]}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             </label>
+            {draftAuthMode === 'bearer' ? (
+              <label>
+                Bearer token
+                <input
+                  type="password"
+                  value={draftToken}
+                  onChange={(event) => setDraftToken(event.target.value)}
+                  placeholder="Optional"
+                  autoComplete="off"
+                />
+              </label>
+            ) : null}
+            {draftAuthMode === 'oauth2' ? (
+              <label>
+                OAuth 2.0 access token
+                <input
+                  type="password"
+                  value={draftOauthToken}
+                  onChange={(event) => setDraftOauthToken(event.target.value)}
+                  placeholder="Access token"
+                  autoComplete="off"
+                />
+              </label>
+            ) : null}
+            <div className="input-label">Custom headers</div>
+            <div className="header-editor">
+              {draftHeaders.map((header) => (
+                <div className="header-row" key={header.id}>
+                  <input
+                    value={header.key}
+                    onChange={(event) => updateDraftHeader(header.id, 'key', event.target.value)}
+                    placeholder="Header"
+                    aria-label="Header name"
+                  />
+                  <input
+                    value={header.value}
+                    onChange={(event) => updateDraftHeader(header.id, 'value', event.target.value)}
+                    placeholder="Value"
+                    aria-label="Header value"
+                  />
+                  <button className="icon-button subtle" type="button" onClick={() => removeDraftHeader(header.id)} aria-label="Remove header">
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+              <button className="secondary-button compact-button" type="button" onClick={addDraftHeader}>
+                <PlusCircle size={14} />
+                Add header
+              </button>
+            </div>
             <button className="primary-button" type="submit" disabled={!draftEndpoint.trim()}>
               {editingServer ? 'Update server' : 'Save server'}
             </button>

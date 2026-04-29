@@ -4,7 +4,7 @@ A modern, developer-friendly UI for testing and debugging **Agent-to-Agent (A2A)
 
 ## Features
 
-- **Configure** agent endpoints with custom headers and authorization
+- **Configure** agent endpoints with bearer, OAuth 2.0 access-token, and custom-header authorization
 - **Fetch & validate** Agent Cards against A2A 0.3.0 compliance rules
 - **Chat** with agents — supports both streaming and non-streaming modes
 - **Streaming UI** — shows a "Thinking..." state and appends tokens progressively, similar to Claude / ChatGPT
@@ -15,7 +15,7 @@ A modern, developer-friendly UI for testing and debugging **Agent-to-Agent (A2A)
 - React 19 + TypeScript
 - Vite
 - Lucide React (icons)
-- Client-only — no backend required
+- Node.js proxy API for CORS-safe A2A calls
 
 ## Getting Started
 
@@ -32,6 +32,8 @@ npm run dev
 ```
 
 Open [http://localhost:5173](http://localhost:5173) in your browser.
+
+`npm run dev` starts both the Vite UI and the separate `../a2a-proxy` Node.js proxy on port `8089`.
 
 ### Build for Production
 
@@ -50,4 +52,3 @@ src/
   types/         # TypeScript types (AgentCard, MessageRequest, TraceLog, etc.)
   utils/         # Validation and helpers
 ```
-

@@ -3,11 +3,27 @@ import { createJsonRpcMessagePayload, sendMessage, streamMessage } from '../serv
 import type { ChatMessage, StreamChunk, TraceLog } from '../types/a2a'
 
 type AppendTrace = (trace: Omit<TraceLog, 'id' | 'timestamp'>) => void
+type UpdateMessages = (contextId: string, updater: (messages: ChatMessage[]) => ChatMessage[]) => void
 
-export function useChat(appendTrace: AppendTrace, initialMessages: ChatMessage[] = []) {
+export function useChat(
+  appendTrace: AppendTrace,
+  initialMessages: ChatMessage[] = [],
+  activeContextId = '',
+  updateSessionMessages?: UpdateMessages,
+) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [loadingContexts, setLoadingContexts] = useState<Set<string>>(new Set())
+  const [errorsByContext, setErrorsByContext] = useState<Record<string, string | null>>({})
+
+  const applyMessages = useCallback(
+    (contextId: string, updater: (messages: ChatMessage[]) => ChatMessage[]) => {
+      if (contextId === activeContextId) {
+        setMessages(updater)
+      }
+      updateSessionMessages?.(contextId, updater)
+    },
+    [activeContextId, updateSessionMessages],
+  )
 
   const sendChatMessage = useCallback(
     async (
@@ -18,10 +34,10 @@ export function useChat(appendTrace: AppendTrace, initialMessages: ChatMessage[]
       headers: Record<string, string>,
     ) => {
       const cleanMessage = message.trim()
-      if (!cleanMessage || loading) return
+      if (!cleanMessage || loadingContexts.has(contextId)) return
 
-      setLoading(true)
-      setError(null)
+      setLoadingContexts((current) => new Set(current).add(contextId))
+      setErrorsByContext((current) => ({ ...current, [contextId]: null }))
 
       const payload = createJsonRpcMessagePayload({ message: cleanMessage, stream }, contextId)
       const startedAt = performance.now()
@@ -34,7 +50,7 @@ export function useChat(appendTrace: AppendTrace, initialMessages: ChatMessage[]
       }
       const agentMessageId = crypto.randomUUID()
 
-      setMessages((current) => [
+      applyMessages(contextId, (current) => [
         ...current,
         userMessage,
         {
@@ -89,7 +105,7 @@ export function useChat(appendTrace: AppendTrace, initialMessages: ChatMessage[]
               }
 
               if (chunk.type === 'status') {
-                setMessages((current) =>
+                applyMessages(contextId, (current) =>
                   current.map((item) =>
                     item.id === agentMessageId
                       ? {
@@ -103,7 +119,7 @@ export function useChat(appendTrace: AppendTrace, initialMessages: ChatMessage[]
               }
 
               if (chunk.type === 'token') {
-                setMessages((current) =>
+                applyMessages(contextId, (current) =>
                   current.map((item) =>
                     item.id === agentMessageId
                       ? {
@@ -127,7 +143,7 @@ export function useChat(appendTrace: AppendTrace, initialMessages: ChatMessage[]
               }
 
               if (chunk.type === 'error') {
-                setMessages((current) =>
+                applyMessages(contextId, (current) =>
                   current.map((item) =>
                     item.id === agentMessageId
                       ? {
@@ -145,14 +161,14 @@ export function useChat(appendTrace: AppendTrace, initialMessages: ChatMessage[]
             headers,
           )
 
-          setMessages((current) =>
+          applyMessages(contextId, (current) =>
             current.map((item) =>
               item.id === agentMessageId
                 ? {
                     ...item,
                     content: item.content || 'Stream completed without a displayable message.',
                     isStreaming: false,
-                    status: 'ok',
+                    status: item.status === 'error' ? 'error' : 'ok',
                     trackerCollapsed: true,
                   }
                 : item,
@@ -168,12 +184,12 @@ export function useChat(appendTrace: AppendTrace, initialMessages: ChatMessage[]
             requestTimestamp,
             request: { method: 'POST', endpoint, headers, payload },
             response: { chunks },
-            status: 'ok',
+            status: chunks.some((chunk) => chunk.type === 'error') ? 'error' : 'ok',
             durationMs: Math.round(performance.now() - startedAt),
           })
         } else {
           const response = await sendMessage(endpoint, payload, headers)
-          setMessages((current) =>
+          applyMessages(contextId, (current) =>
             current.map((item) =>
               item.id === agentMessageId
                 ? {
@@ -203,8 +219,8 @@ export function useChat(appendTrace: AppendTrace, initialMessages: ChatMessage[]
         }
       } catch (caught) {
         const message = caught instanceof Error ? caught.message : 'Message request failed'
-        setError(message)
-        setMessages((current) =>
+        setErrorsByContext((current) => ({ ...current, [contextId]: message }))
+        applyMessages(contextId, (current) =>
           current.map((item) =>
             item.id === agentMessageId
               ? { ...item, content: message, status: 'error', isStreaming: false }
@@ -225,16 +241,28 @@ export function useChat(appendTrace: AppendTrace, initialMessages: ChatMessage[]
           durationMs: Math.round(performance.now() - startedAt),
         })
       } finally {
-        setLoading(false)
+        setLoadingContexts((current) => {
+          const next = new Set(current)
+          next.delete(contextId)
+          return next
+        })
       }
     },
-    [appendTrace, loading],
+    [appendTrace, applyMessages, loadingContexts],
   )
 
   const clearMessages = useCallback(() => {
     setMessages([])
-    setError(null)
-  }, [])
+    setErrorsByContext((current) => ({ ...current, [activeContextId]: null }))
+    if (activeContextId) updateSessionMessages?.(activeContextId, () => [])
+  }, [activeContextId, updateSessionMessages])
 
-  return { messages, setMessages, loading, error, sendChatMessage, clearMessages }
+  return {
+    messages,
+    setMessages,
+    loading: loadingContexts.has(activeContextId),
+    error: errorsByContext[activeContextId] ?? null,
+    sendChatMessage,
+    clearMessages,
+  }
 }

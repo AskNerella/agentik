@@ -1,4 +1,4 @@
-import { RotateCcw, Search, Trash2, X } from 'lucide-react'
+import { ArrowLeft, RotateCcw, Search, Trash2, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { TraceLog } from '../types/a2a'
 
@@ -17,12 +17,15 @@ function JsonBlock({ value, raw }: { value: unknown; raw?: boolean }) {
   return <pre>{typeof value === 'string' ? value : JSON.stringify(value, null, raw ? 0 : 2)}</pre>
 }
 
+function getTraceStart(log: TraceLog) {
+  return new Date(log.requestTimestamp || log.timestamp).getTime()
+}
+
 export function MonitoringPage({ logs, onClearTraces, onReplayTrace }: Props) {
   const [query, setQuery] = useState('')
-  const [previousSearches, setPreviousSearches] = useState<string[]>([])
+  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
   const [selectedTrace, setSelectedTrace] = useState<TraceLog | null>(null)
   const [rawTracePayload, setRawTracePayload] = useState(false)
-  const longestTrace = Math.max(1, ...logs.map((log) => log.durationMs))
   const visibleLogs = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase()
     if (!normalizedQuery) return logs
@@ -33,12 +36,26 @@ export function MonitoringPage({ logs, onClearTraces, onReplayTrace }: Props) {
         .some((value) => String(value).toLowerCase().includes(normalizedQuery)),
     )
   }, [logs, query])
+  const conversations = useMemo(() => {
+    const grouped = visibleLogs.reduce<Record<string, TraceLog[]>>((acc, log) => {
+      const key = log.contextId || 'agent-card'
+      acc[key] = [...(acc[key] ?? []), log]
+      return acc
+    }, {})
 
-  const commitSearch = (value: string) => {
-    const nextSearch = value.trim()
-    if (!nextSearch) return
-    setPreviousSearches((current) => [nextSearch, ...current.filter((item) => item !== nextSearch)].slice(0, 8))
-  }
+    return Object.entries(grouped)
+      .map(([contextId, groupLogs]) => ({
+        contextId,
+        logs: [...groupLogs].sort((a, b) => getTraceStart(a) - getTraceStart(b)),
+      }))
+      .sort((a, b) => getTraceStart(b.logs[0]) - getTraceStart(a.logs[0]))
+  }, [visibleLogs])
+  const selectedConversation =
+    conversations.find((conversation) => conversation.contextId === selectedConversationId) ?? null
+  const chartLogs = selectedConversation?.logs ?? []
+  const chartStart = Math.min(...chartLogs.map(getTraceStart), Date.now())
+  const chartEnd = Math.max(...chartLogs.map((log) => getTraceStart(log) + Math.max(log.durationMs, 1)), chartStart + 1)
+  const chartSpan = Math.max(1, chartEnd - chartStart)
 
   return (
     <section className="monitoring-page panel-section">
@@ -53,76 +70,91 @@ export function MonitoringPage({ logs, onClearTraces, onReplayTrace }: Props) {
       </div>
 
       <div className="monitoring-toolbar">
+        {selectedConversation ? (
+          <button className="icon-button subtle monitoring-back-button" type="button" onClick={() => setSelectedConversationId(null)} aria-label="Back to conversations">
+            <ArrowLeft size={15} />
+          </button>
+        ) : null}
         <div className="input-with-icon">
           <Search size={15} />
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            onBlur={(event) => commitSearch(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') commitSearch(event.currentTarget.value)
-            }}
             placeholder="Search by context id, request id, or text"
             aria-label="Search traces"
           />
-        </div>
-        <div className="previous-searches">
-          <div className="previous-searches-heading">
-            <span>Previous searches</span>
-            {previousSearches.length > 0 ? (
-              <button type="button" onClick={() => setPreviousSearches([])}>
-                Clear
-              </button>
-            ) : null}
-          </div>
-          {previousSearches.length === 0 ? (
-            <p>No previous searches</p>
-          ) : (
-            <div className="previous-search-list">
-              {previousSearches.map((search) => (
-                <span className="previous-search" key={search}>
-                  <input
-                    value={search}
-                    onChange={(event) => {
-                      const value = event.target.value
-                      setPreviousSearches((current) => current.map((item) => (item === search ? value : item)))
-                    }}
-                    onFocus={() => setQuery(search)}
-                    aria-label={`Previous search ${search}`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setPreviousSearches((current) => current.filter((item) => item !== search))}
-                    aria-label={`Clear previous search ${search}`}
-                  >
-                    <X size={12} />
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
         </div>
       </div>
 
       {visibleLogs.length === 0 ? (
         <div className="inspector-empty monitoring-empty">No Information</div>
-      ) : (
-        <div className="monitoring-timeline timeline">
-          {visibleLogs.map((log) => (
-            <button className="timeline-item" type="button" key={log.id} onClick={() => setSelectedTrace(log)}>
-              <span className={`timeline-dot ${log.status}`} />
-              <span className="timeline-copy">
-                <strong>{log.displayText || log.label}</strong>
-                <span>
-                  {log.kind} • {new Date(log.timestamp).toLocaleTimeString()}
+      ) : !selectedConversation ? (
+        <div className="conversation-trace-list monitoring-jump-view" key="conversation-list">
+          {conversations.map((conversation) => {
+            const startedAt = getTraceStart(conversation.logs[0])
+            const finishedAt = Math.max(...conversation.logs.map((log) => getTraceStart(log) + Math.max(log.durationMs, 1)))
+            const requestCount = conversation.logs.filter((log) => log.kind === 'request').length
+            const streamCount = conversation.logs.filter((log) => log.kind === 'stream').length
+            const errorCount = conversation.logs.filter((log) => log.status === 'error').length
+
+            return (
+              <button
+                className="conversation-trace-row"
+                type="button"
+                key={conversation.contextId}
+                onClick={() => setSelectedConversationId(conversation.contextId)}
+              >
+                <span className={`timeline-dot ${errorCount ? 'error' : 'ok'}`} />
+                <span className="conversation-trace-main">
+                  <strong>{conversation.contextId === 'agent-card' ? 'Agent card requests' : conversation.contextId}</strong>
+                  <span>
+                    {requestCount} requests • {streamCount} stream events • {formatDuration(finishedAt - startedAt)}
+                  </span>
                 </span>
-              </span>
-              <span className="timeline-bar">
-                <span style={{ width: `${Math.max(8, (log.durationMs / longestTrace) * 100)}%` }} />
-              </span>
-              <span className="timeline-ms">{formatDuration(log.durationMs)}</span>
-            </button>
-          ))}
+                <span>{new Date(startedAt).toLocaleTimeString()}</span>
+              </button>
+            )
+          })}
+        </div>
+      ) : (
+        <div className="monitoring-scroll monitoring-jump-view" key={selectedConversation.contextId}>
+          <div className="gantt-detail-heading">
+            <div>
+              <span className="eyebrow">Conversation ID</span>
+              <h3>{selectedConversation.contextId}</h3>
+            </div>
+          </div>
+          <div className="gantt-legend">
+            <span><i className="gantt-swatch request" />Request</span>
+            <span><i className="gantt-swatch stream" />Stream</span>
+            <span><i className="gantt-swatch response" />Response</span>
+            <span><i className="gantt-swatch agent-card" />Agent card</span>
+          </div>
+          <div className="gantt-chart gantt-chart-flat" aria-label="Request timeline for selected conversation">
+            <div className="gantt-rows">
+              {chartLogs.map((log) => {
+                const start = getTraceStart(log)
+                const left = ((start - chartStart) / chartSpan) * 100
+                const width = Math.max(2, (Math.max(log.durationMs, 1) / chartSpan) * 100)
+
+                return (
+                  <button className="gantt-row" type="button" key={log.id} onClick={() => setSelectedTrace(log)}>
+                    <span className="gantt-label">
+                      <strong>{log.displayText || log.label}</strong>
+                      <span>{log.kind} • {new Date(start).toLocaleTimeString()}</span>
+                    </span>
+                    <span className="gantt-track">
+                      <span
+                        className={`gantt-bar ${log.kind} ${log.status}`}
+                        style={{ left: `${left}%`, width: `${Math.min(width, 100 - left)}%` }}
+                      />
+                    </span>
+                    <span className="timeline-ms">{formatDuration(log.durationMs)}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
         </div>
       )}
 

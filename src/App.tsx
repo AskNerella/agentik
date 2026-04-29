@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import './App.css'
 import { ChatWindow } from './components/ChatWindow'
 import { ConfigPanel } from './components/ConfigPanel'
@@ -7,12 +7,17 @@ import { MonitoringPage } from './components/MonitoringPage'
 import { useAgent } from './hooks/useAgent'
 import { useChat } from './hooks/useChat'
 import { useTrace } from './hooks/useTrace'
-import type { A2AServer, ChatSession, HeaderPair, PlaygroundExport, TraceLog } from './types/a2a'
+import { fetchAgentCard } from './services/a2aClient'
+import type { A2AServer, AuthMode, ChatSession, HeaderPair, PlaygroundExport, TraceLog } from './types/a2a'
 import { validateAgentCard } from './utils/agentCardValidation'
 
 const STORAGE_KEY = 'agentik.a2a-playground.v1'
 type AppPage = 'playground' | 'monitoring'
 type ConnectionStatus = 'checking' | 'online' | 'offline' | 'unknown'
+
+function normalizeArtifactText(value: string) {
+  return value.replace(/\s+/g, ' ').trim()
+}
 
 function loadStoredData(): Partial<PlaygroundExport> {
   try {
@@ -23,7 +28,14 @@ function loadStoredData(): Partial<PlaygroundExport> {
   }
 }
 
-function buildHeaderMap(headers: HeaderPair[], authToken: string) {
+function resolveAuthMode(authMode: AuthMode | undefined, authToken: string, oauthToken?: string): AuthMode {
+  if (authMode) return authMode
+  if (oauthToken?.trim()) return 'oauth2'
+  if (authToken.trim()) return 'bearer'
+  return 'none'
+}
+
+function buildHeaderMap(headers: HeaderPair[], authToken: string, authMode: AuthMode = 'bearer', oauthToken = '') {
   const headerMap = headers.reduce<Record<string, string>>((acc, header) => {
     const key = header.key.trim()
     const value = header.value.trim()
@@ -31,8 +43,12 @@ function buildHeaderMap(headers: HeaderPair[], authToken: string) {
     return acc
   }, {})
 
-  if (authToken.trim()) {
+  if (authMode === 'bearer' && authToken.trim()) {
     headerMap.Authorization = `Bearer ${authToken.trim()}`
+  }
+
+  if (authMode === 'oauth2' && oauthToken.trim()) {
+    headerMap.Authorization = `Bearer ${oauthToken.trim()}`
   }
 
   return headerMap
@@ -42,7 +58,9 @@ function App() {
   const storedData = useMemo(() => loadStoredData(), [])
   const [endpoint, setEndpoint] = useState('')
   const [endpointProvided, setEndpointProvided] = useState(false)
+  const [authMode, setAuthMode] = useState<AuthMode>('none')
   const [authToken, setAuthToken] = useState('')
+  const [oauthToken, setOauthToken] = useState('')
   const [streaming, setStreaming] = useState(true)
   const [notification, setNotification] = useState<string | null>(null)
   const [configCollapsed, setConfigCollapsed] = useState(false)
@@ -56,22 +74,53 @@ function App() {
   const [servers, setServers] = useState<A2AServer[]>(storedData.servers ?? [])
   const [headers, setHeaders] = useState<HeaderPair[]>([])
   const [serverStatus, setServerStatus] = useState<Record<string, ConnectionStatus>>({})
+  const [clearedSessionTraceIds, setClearedSessionTraceIds] = useState<Set<string>>(new Set())
 
-  const { logs, appendTrace, clearLogs, setLogs } = useTrace(storedData.traces ?? [])
+  const { logs, appendTrace, setLogs } = useTrace(storedData.traces ?? [])
   const { card, setCard, clearAgentCard, validation, loading: agentLoading, error: agentError, loadAgentCard } = useAgent(appendTrace)
+  const updateSessionMessages = useCallback((contextId: string, updater: (messages: ChatSession['messages']) => ChatSession['messages']) => {
+    setSessions((current) =>
+      current.map((session) => {
+        if (session.contextId !== contextId) return session
+        const messages = updater(session.messages)
+        return {
+          ...session,
+          title: session.renamed ? session.title : messages[0]?.content.slice(0, 42) || 'New agent session',
+          subtitle:
+            messages.length === 0
+              ? 'No messages yet'
+              : `${messages.length} message${messages.length === 1 ? '' : 's'}`,
+          messages,
+          updatedAt: new Date().toISOString(),
+        }
+      }),
+    )
+  }, [])
   const {
     messages,
     setMessages,
     loading: chatLoading,
     error: chatError,
     sendChatMessage,
-  } = useChat(appendTrace, storedData.sessions?.[0]?.messages ?? [])
+  } = useChat(appendTrace, storedData.sessions?.[0]?.messages ?? [], activeContextId, updateSessionMessages)
 
-  const requestHeaders = useMemo(() => buildHeaderMap(headers, authToken), [headers, authToken])
+  const requestHeaders = useMemo(() => buildHeaderMap(headers, authToken, authMode, oauthToken), [headers, authMode, authToken, oauthToken])
   const activeMessageEndpoint = card?.url || card?.endpoint || endpoint
   const activeSession = useMemo(
     () => sessions.find((session) => session.id === activeSessionId) ?? sessions[0],
     [activeSessionId, sessions],
+  )
+  const activeAgentName = card?.name || activeSession?.agentCard?.name || servers.find((server) => server.endpoint === endpoint)?.name || null
+  const visibleArtifacts = useMemo(
+    () =>
+      messages.flatMap((message) => {
+        const messageText = normalizeArtifactText(message.content)
+        return (message.artifacts ?? []).filter((artifact) => {
+          const artifactText = normalizeArtifactText(artifact.content)
+          return artifactText && artifactText !== messageText
+        })
+      }),
+    [messages],
   )
   const activeSessionLogs = useMemo(
     () =>
@@ -81,12 +130,16 @@ function App() {
       }),
     [activeContextId, endpoint, logs],
   )
+  const visibleSessionLogs = useMemo(
+    () => activeSessionLogs.filter((log) => !clearedSessionTraceIds.has(log.id)),
+    [activeSessionLogs, clearedSessionTraceIds],
+  )
   const inspectorLogs = useMemo(
     () =>
       selectedTraceMessageId
-        ? activeSessionLogs.filter((log) => log.messageId === selectedTraceMessageId)
-        : activeSessionLogs,
-    [activeSessionLogs, selectedTraceMessageId],
+        ? visibleSessionLogs.filter((log) => log.messageId === selectedTraceMessageId)
+        : visibleSessionLogs,
+    [selectedTraceMessageId, visibleSessionLogs],
   )
   const activeServerId = useMemo(
     () => servers.find((server) => server.endpoint === endpoint)?.id,
@@ -144,12 +197,17 @@ function App() {
     const checkServer = async (server: A2AServer) => {
       setServerStatus((current) => ({ ...current, [server.id]: 'checking' }))
       try {
-        const response = await fetch(server.endpoint, {
-          method: 'GET',
-          headers: buildHeaderMap(server.headers, server.authToken),
-        })
+        await fetchAgentCard(
+          server.endpoint,
+          buildHeaderMap(
+            server.headers,
+            server.authToken,
+            resolveAuthMode(server.authMode, server.authToken, server.oauthToken),
+            server.oauthToken,
+          ),
+        )
         if (!cancelled) {
-          setServerStatus((current) => ({ ...current, [server.id]: response.ok ? 'online' : 'offline' }))
+          setServerStatus((current) => ({ ...current, [server.id]: 'online' }))
         }
       } catch {
         if (!cancelled) {
@@ -186,6 +244,14 @@ function App() {
     if (nextCard && validateAgentCard(nextCard).valid) {
       setEndpointProvided(true)
       setSelectedTraceMessageId(null)
+      if (!activeSessionId) {
+        createSession({
+          keepConnection: true,
+          connected: true,
+          endpointValue: endpoint.trim(),
+          agentCard: nextCard,
+        })
+      }
       return
     }
 
@@ -204,7 +270,30 @@ function App() {
     setNotification(null)
   }
 
-  const createSession = ({ keepConnection = false }: { keepConnection?: boolean } = {}) => {
+  const handleDisconnectAgent = () => {
+    if (!activeSessionId) return
+    setEndpointProvided(false)
+    setSessions((current) =>
+      current.map((session) =>
+        session.id === activeSessionId
+          ? { ...session, connected: false, agentCard: card ?? session.agentCard ?? null, updatedAt: new Date().toISOString() }
+          : session,
+      ),
+    )
+    setNotification('Agent disconnected.')
+  }
+
+  const createSession = ({
+    keepConnection = false,
+    connected = endpointProvided,
+    endpointValue = endpoint,
+    agentCard = card,
+  }: {
+    keepConnection?: boolean
+    connected?: boolean
+    endpointValue?: string
+    agentCard?: typeof card
+  } = {}) => {
     const id = crypto.randomUUID()
     const contextId = crypto.randomUUID()
     const nextSession: ChatSession = {
@@ -212,10 +301,10 @@ function App() {
       title: 'New agent session',
       subtitle: 'No messages yet',
       messages: [],
-      endpoint: keepConnection ? endpoint : '',
+      endpoint: keepConnection ? endpointValue : '',
       contextId,
-      connected: keepConnection ? endpointProvided : false,
-      agentCard: keepConnection ? card ?? null : null,
+      connected: keepConnection ? connected : false,
+      agentCard: keepConnection ? agentCard ?? null : null,
       updatedAt: new Date().toISOString(),
     }
     setSessions((current) => [
@@ -306,8 +395,13 @@ function App() {
   }
 
   const handleClearTraces = () => {
-    clearLogs()
-    setNotification('Traces cleared.')
+    setClearedSessionTraceIds((current) => {
+      const next = new Set(current)
+      activeSessionLogs.forEach((log) => next.add(log.id))
+      return next
+    })
+    setSelectedTraceMessageId(null)
+    setNotification('Session traces cleared.')
   }
 
   const handleSaveServer = (server: Omit<A2AServer, 'id' | 'createdAt'>) => {
@@ -318,7 +412,9 @@ function App() {
     }
     setServers((current) => [nextServer, ...current])
     setEndpoint(nextServer.endpoint)
+    setAuthMode(resolveAuthMode(nextServer.authMode, nextServer.authToken, nextServer.oauthToken))
     setAuthToken(nextServer.authToken)
+    setOauthToken(nextServer.oauthToken ?? '')
     setHeaders(nextServer.headers)
     setEndpointProvided(false)
   }
@@ -329,7 +425,9 @@ function App() {
       previous &&
       (previous.name !== server.name ||
         previous.endpoint !== server.endpoint ||
+        previous.authMode !== server.authMode ||
         previous.authToken !== server.authToken ||
+        previous.oauthToken !== server.oauthToken ||
         JSON.stringify(previous.headers) !== JSON.stringify(server.headers))
     setServers((current) =>
       current.map((item) =>
@@ -344,7 +442,9 @@ function App() {
 
     if (previous?.endpoint && endpoint === previous.endpoint) {
       setEndpoint(server.endpoint)
+      setAuthMode(resolveAuthMode(server.authMode, server.authToken, server.oauthToken))
       setAuthToken(server.authToken)
+      setOauthToken(server.oauthToken ?? '')
       setHeaders(server.headers)
     }
 
@@ -381,7 +481,9 @@ function App() {
 
   const handleSelectServer = (server: A2AServer) => {
     setEndpoint(server.endpoint)
+    setAuthMode(resolveAuthMode(server.authMode, server.authToken, server.oauthToken))
     setAuthToken(server.authToken)
+    setOauthToken(server.oauthToken ?? '')
     setHeaders(server.headers)
     setEndpointProvided(false)
     clearAgentCard()
@@ -451,7 +553,9 @@ function App() {
     >
       <ConfigPanel
         endpoint={endpoint}
+        authMode={authMode}
         authToken={authToken}
+        oauthToken={oauthToken}
         headers={headers}
         sessions={sessions}
         servers={servers}
@@ -485,18 +589,29 @@ function App() {
         ) : (
           <ChatWindow
             sessionTitle={sessions.find((session) => session.id === activeSessionId)?.title ?? 'New agent session'}
+            agentName={activeAgentName}
             messages={messages}
             loading={chatLoading}
             error={chatError}
             streaming={streaming}
             disabled={!activeMessageEndpoint.trim()}
             endpoint={endpoint}
+            authMode={authMode}
+            authToken={authToken}
+            oauthToken={oauthToken}
+            headers={headers}
+            servers={servers}
             endpointProvided={endpointProvided}
             agentLoading={agentLoading}
-            servers={servers}
+            hasSession={Boolean(activeSessionId)}
             onEndpointChange={handleEndpointChange}
+            onAuthModeChange={setAuthMode}
+            onAuthTokenChange={setAuthToken}
+            onOauthTokenChange={setOauthToken}
+            onHeadersChange={setHeaders}
             onSelectServer={handleSelectServer}
             onConnect={handleFetchAgentCard}
+            onDisconnect={handleDisconnectAgent}
             onStreamingChange={setStreaming}
             onSend={handleSendMessage}
             onClear={handleClearAndStartNewSession}
@@ -515,7 +630,7 @@ function App() {
         logs={inspectorLogs}
         traceFilterLabel={selectedTraceMessageId ? 'Selected message' : activeSession?.title ?? 'Session'}
         messageCount={messages.length}
-        artifacts={messages.flatMap((message) => message.artifacts ?? [])}
+        artifacts={visibleArtifacts}
         onReplayTrace={handleReplayTrace}
         onClearTraces={handleClearTraces}
         collapsed={inspectorCollapsed}

@@ -4,15 +4,19 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/dev-with-proxy.mjs",
+    "dev:ui": "vite",
+    "proxy": "npm --prefix ../a2a-proxy start",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "node scripts/dev-with-proxy.mjs --preview"
   },
   "dependencies": {
     "lucide-react": "^1.11.0",
     "react": "^19.2.5",
-    "react-dom": "^19.2.5"
+    "react-dom": "^19.2.5",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
