@@ -1,4 +1,4 @@
-import { ChevronDown, Eraser, MessageSquare, PlugZap, Settings2, Unplug, X } from 'lucide-react'
+import { AlertCircle, ChevronDown, Eraser, MessageSquare, PlugZap, Settings2, Unplug, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { A2AServer, AuthMode, ChatMessage, HeaderPair } from '../types/a2a'
@@ -293,7 +293,15 @@ export function ChatWindow({
               key={message.id}
               onClick={message.role === 'user' ? () => onSelectMessageTrace(selectedTraceMessageId === message.id ? null : message.id) : undefined}
             >
-              <div className="message-meta">{message.role === 'user' ? 'You' : 'Agent'}</div>
+              <div className="message-meta">
+                {message.role === 'user' ? 'You' : 'Agent'}
+                {message.role === 'agent' && message.status === 'error' ? (
+                  <span className="message-failed-badge">
+                    <AlertCircle size={12} aria-hidden="true" />
+                    Failed
+                  </span>
+                ) : null}
+              </div>
               {message.role === 'agent' && message.statusUpdates?.length ? (
                 <details className="agent-status-tracker" open={!message.trackerCollapsed}>
                   <summary>Agent status tracker</summary>
@@ -309,14 +317,24 @@ export function ChatWindow({
                   <>
                     <MarkdownText content={message.content} />
                     {message.isStreaming ? (
-                      <span className="thinking">
-                        <span className="thinking-dots" aria-hidden="true">
-                          <span />
-                          <span />
-                          <span />
+                      <>
+                        {message.statusUpdates?.length ? (
+                          <span
+                            key={`${message.id}-status-${message.statusUpdates.length}`}
+                            className="agent-status-latest"
+                          >
+                            {message.statusUpdates[message.statusUpdates.length - 1]}
+                          </span>
+                        ) : null}
+                        <span className="thinking">
+                          <span className="thinking-dots" aria-hidden="true">
+                            <span />
+                            <span />
+                            <span />
+                          </span>
+                          Thinking
                         </span>
-                        Thinking
-                      </span>
+                      </>
                     ) : null}
                   </>
                 ) : (

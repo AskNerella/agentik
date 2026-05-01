@@ -129,7 +129,7 @@ export function useChat(
                               ? item.content
                               : chunk.final
                                 ? chunk.content ?? item.content
-                                : `${item.content}${chunk.content ?? ''}`,
+                                : item.content,
                           artifacts: chunk.artifact ? [...(item.artifacts ?? []), chunk.artifact] : item.artifacts,
                           statusUpdates:
                             chunk.final || !chunk.content || chunk.artifact
