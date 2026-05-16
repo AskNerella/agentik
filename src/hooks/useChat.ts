@@ -112,6 +112,9 @@ export function useChat(
                           ...item,
                           statusUpdates: [...(item.statusUpdates ?? []), chunk.content ?? 'Agent updated status.'],
                           artifacts: chunk.artifact ? [...(item.artifacts ?? []), chunk.artifact] : item.artifacts,
+                          uiResources: chunk.uiResources
+                            ? [...(item.uiResources ?? []), ...chunk.uiResources]
+                            : item.uiResources,
                         }
                       : item,
                   ),
@@ -131,6 +134,9 @@ export function useChat(
                                 ? chunk.content ?? item.content
                                 : item.content,
                           artifacts: chunk.artifact ? [...(item.artifacts ?? []), chunk.artifact] : item.artifacts,
+                          uiResources: chunk.uiResources
+                            ? [...(item.uiResources ?? []), ...chunk.uiResources]
+                            : item.uiResources,
                           statusUpdates:
                             chunk.final || !chunk.content || chunk.artifact
                               ? item.statusUpdates
@@ -199,6 +205,7 @@ export function useChat(
                     isStreaming: false,
                     trackerCollapsed: true,
                     artifacts: response.artifacts ?? item.artifacts,
+                    uiResources: response.uiResources ?? item.uiResources,
                   }
                 : item,
             ),

@@ -35,10 +35,18 @@ export type A2AJsonRpcMessageRequest = {
   }
 }
 
+export type McpUIResource = {
+  uri: string
+  mimeType: 'text/html;profile=mcp-app'
+  text?: string
+  blob?: string
+}
+
 export type MessageResponse = {
   reply: string
   status: 'ok' | 'error'
   artifacts?: AgentArtifact[]
+  uiResources?: McpUIResource[]
 }
 
 export type StreamChunk = {
@@ -46,6 +54,7 @@ export type StreamChunk = {
   content?: string
   final?: boolean
   artifact?: AgentArtifact
+  uiResources?: McpUIResource[]
   raw?: unknown
 }
 
@@ -72,6 +81,7 @@ export type ChatMessage = {
   statusUpdates?: string[]
   trackerCollapsed?: boolean
   artifacts?: AgentArtifact[]
+  uiResources?: McpUIResource[]
   status?: 'ok' | 'error'
   createdAt: string
 }

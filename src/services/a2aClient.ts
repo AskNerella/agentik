@@ -1,6 +1,7 @@
 import type {
   A2AJsonRpcMessageRequest,
   AgentCard,
+  McpUIResource,
   MessageRequest,
   MessageResponse,
   StreamChunk,
@@ -233,6 +234,53 @@ function isFinalA2AEvent(value: unknown) {
   )
 }
 
+function extractUIResources(value: unknown): McpUIResource[] {
+  if (!value || typeof value !== 'object') return []
+  const resources: McpUIResource[] = []
+  const record = value as Record<string, unknown>
+  const result =
+    record.result && typeof record.result === 'object' ? (record.result as Record<string, unknown>) : record
+
+  const partSources: unknown[] = [
+    result.parts,
+    result.message && typeof result.message === 'object'
+      ? (result.message as Record<string, unknown>).parts
+      : null,
+  ]
+
+  if (Array.isArray(result.history)) {
+    for (const entry of result.history) {
+      if (entry && typeof entry === 'object') {
+        partSources.push((entry as Record<string, unknown>).parts)
+      }
+    }
+  }
+
+  if (result.artifact && typeof result.artifact === 'object') {
+    partSources.push((result.artifact as Record<string, unknown>).parts)
+  }
+
+  for (const parts of partSources) {
+    if (!Array.isArray(parts)) continue
+    for (const part of parts) {
+      if (!part || typeof part !== 'object') continue
+      const p = part as Record<string, unknown>
+      if (p.kind !== 'resource' || !p.resource || typeof p.resource !== 'object') continue
+      const r = p.resource as Record<string, unknown>
+      const mimeType = typeof r.mimeType === 'string' ? r.mimeType : ''
+      if (!mimeType.includes('mcp-app')) continue
+      resources.push({
+        uri: typeof r.uri === 'string' ? r.uri : `ui://unknown/${crypto.randomUUID()}`,
+        mimeType: 'text/html;profile=mcp-app',
+        text: typeof r.text === 'string' ? r.text : undefined,
+        blob: typeof r.blob === 'string' ? r.blob : undefined,
+      })
+    }
+  }
+
+  return resources
+}
+
 function normalizeMessageResponse(response: unknown): MessageResponse {
   const record = response && typeof response === 'object' ? (response as Record<string, unknown>) : {}
   const error = record.error
@@ -244,6 +292,7 @@ function normalizeMessageResponse(response: unknown): MessageResponse {
   }
 
   const artifacts = extractArtifacts(response)
+  const uiResources = extractUIResources(response)
   const failed = getA2AState(response) === 'failed'
 
   return {
@@ -252,6 +301,7 @@ function normalizeMessageResponse(response: unknown): MessageResponse {
       : extractText(response) || summarizeA2AEvent(response) || JSON.stringify(response, null, 2),
     status: failed ? 'error' : 'ok',
     artifacts,
+    uiResources: uiResources.length > 0 ? uiResources : undefined,
   }
 }
 
@@ -323,18 +373,21 @@ function parseStreamLine(line: string): StreamChunk | null {
 
     const final = isFinalA2AEvent(parsed)
     const artifact = extractArtifact(parsed)
+    const uiResources = extractUIResources(parsed)
+    const uiResourcesProp = uiResources.length > 0 ? uiResources : undefined
+
     if (artifact) {
-      return { type: final ? 'token' : 'status', content: artifact.content, final, artifact, raw: parsed }
+      return { type: final ? 'token' : 'status', content: artifact.content, final, artifact, uiResources: uiResourcesProp, raw: parsed }
     }
 
     const text = extractText(parsed)
     if (text) {
-      return { type: 'token', content: text, final, raw: parsed }
+      return { type: 'token', content: text, final, uiResources: uiResourcesProp, raw: parsed }
     }
 
     const summary = summarizeA2AEvent(parsed)
     if (summary) {
-      return { type: final ? 'token' : 'status', content: summary, final, raw: parsed }
+      return { type: final ? 'token' : 'status', content: summary, final, uiResources: uiResourcesProp, raw: parsed }
     }
   } catch {
     return { type: 'token', content: normalized }

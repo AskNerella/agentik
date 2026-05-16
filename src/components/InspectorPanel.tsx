@@ -21,6 +21,7 @@ type Props = {
   messageCount: number
   artifacts: AgentArtifact[]
   onReplayTrace: (trace: TraceLog) => void
+  onRefreshAgentCard: () => void
   onClearTraces: () => void
   collapsed: boolean
   onToggleCollapsed: () => void
@@ -49,6 +50,7 @@ export function InspectorPanel({
   messageCount,
   artifacts,
   onReplayTrace,
+  onRefreshAgentCard,
   onClearTraces,
   collapsed,
   onToggleCollapsed,
@@ -61,6 +63,8 @@ export function InspectorPanel({
   const [jsonOpen, setJsonOpen] = useState(false)
   const [expandedSkillIds, setExpandedSkillIds] = useState<Set<string>>(new Set())
   const [artifactSort, setArtifactSort] = useState<ArtifactSort>('newest')
+  const [skillQuery, setSkillQuery] = useState('')
+  const [showCardHeaderDetails, setShowCardHeaderDetails] = useState(true)
   const longestTrace = Math.max(1, ...logs.map((log) => log.durationMs))
   const requestLogs = useMemo(() => logs.filter((log) => log.kind === 'request'), [logs])
   const streamLogs = useMemo(() => logs.filter((log) => log.kind === 'stream'), [logs])
@@ -76,6 +80,17 @@ export function InspectorPanel({
       return artifactSort === 'newest' ? rightTime - leftTime : leftTime - rightTime
     })
   }, [artifactSort, artifacts])
+  const filteredSkills = useMemo(() => {
+    if (!card) return []
+    const normalizedQuery = skillQuery.trim().toLowerCase()
+    if (!normalizedQuery) return card.skills
+
+    return card.skills.filter((skill) => {
+      const name = skill.name.toLowerCase()
+      const description = (skill.description || '').toLowerCase()
+      return name.includes(normalizedQuery) || description.includes(normalizedQuery)
+    })
+  }, [card, skillQuery])
 
   const toggleSkill = (id: string) => {
     setExpandedSkillIds((current) => {
@@ -168,24 +183,62 @@ export function InspectorPanel({
             {agentError ? <div className="inline-error">{agentError}</div> : null}
             {card ? (
               <div className="agent-detail">
-                <div className="agent-avatar">
-                  <Sparkles size={20} />
-                </div>
-                <h4>{card.name}</h4>
-                <p>{card.description || 'No description provided.'}</p>
-                <div className="detail-list">
-                  <div>
-                    <span>Agent URL</span>
-                    <strong>{card.url || card.endpoint}</strong>
+                <div className="agent-header">
+                  <div className="agent-title-row">
+                    <div className="agent-avatar">
+                      <Sparkles size={20} />
+                    </div>
+                    <h4>{card.name}</h4>
                   </div>
-                  <div>
-                    <span>Skills</span>
-                    <strong>{card.skills.length}</strong>
-                  </div>
+                  <button
+                    className="text-button agent-detail-toggle"
+                    type="button"
+                    onClick={() => setShowCardHeaderDetails((current) => !current)}
+                    aria-expanded={showCardHeaderDetails}
+                  >
+                    {showCardHeaderDetails ? 'Hide details' : 'Show details'}
+                  </button>
                 </div>
-                <ValidationStatus validation={validation} />
+                {showCardHeaderDetails ? (
+                  <>
+                    <p>{card.description || 'No description provided.'}</p>
+                    <div className="detail-list">
+                      <div>
+                        <span>Agent URL</span>
+                        <strong>{card.url || card.endpoint}</strong>
+                      </div>
+                      <div>
+                        <span>Skills</span>
+                        <strong>{card.skills.length}</strong>
+                      </div>
+                    </div>
+                    <ValidationStatus validation={validation} />
+                  </>
+                ) : null}
+                <label className="skill-search">
+                  <span>Search skills</span>
+                  <div className="skill-search-input-wrap">
+                    <input
+                      type="search"
+                      value={skillQuery}
+                      onChange={(event) => setSkillQuery(event.target.value)}
+                      placeholder="Search by name or description"
+                      aria-label="Search skills"
+                    />
+                    <button
+                      className="skill-search-clear"
+                      type="button"
+                      onClick={() => setSkillQuery('')}
+                      aria-label="Clear skill search"
+                      disabled={!skillQuery.trim()}
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+                </label>
                 <div className="skill-list">
-                  {card.skills.map((skill, index) => {
+                  {filteredSkills.length === 0 ? <div className="inspector-empty">No skills found.</div> : null}
+                  {filteredSkills.map((skill, index) => {
                     const skillId = `${skill.name}-${index}`
                     const expanded = expandedSkillIds.has(skillId)
                     const description = skill.description || 'No description provided.'
@@ -203,9 +256,14 @@ export function InspectorPanel({
                     )
                   })}
                 </div>
-                <button className="secondary-button" type="button" onClick={() => setJsonOpen(true)}>
-                  View original JSON
-                </button>
+                <div className="agent-footer">
+                  <button className="secondary-button" type="button" onClick={onRefreshAgentCard}>
+                    Refresh
+                  </button>
+                  <button className="secondary-button" type="button" onClick={() => setJsonOpen(true)}>
+                    View Agent Card
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="inspector-empty">No Information</div>

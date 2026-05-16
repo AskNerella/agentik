@@ -38,6 +38,7 @@ type Props = {
   onRenameSession: (id: string, title: string) => void
   onExportData: () => void
   onImportData: (file: File) => void
+  onResetAllData: () => void
   activePage: 'playground' | 'monitoring'
   onOpenMonitoring: () => void
   collapsed: boolean
@@ -67,6 +68,7 @@ export function ConfigPanel({
   onRenameSession,
   onExportData,
   onImportData,
+  onResetAllData,
   activePage,
   onOpenMonitoring,
   collapsed,
@@ -230,6 +232,10 @@ export function ConfigPanel({
         <button type="button" onClick={() => fileInputRef.current?.click()}>
           <Upload size={14} />
           Import
+        </button>
+        <button className="danger" type="button" onClick={onResetAllData}>
+          <Trash2 size={14} />
+          Reset all
         </button>
         <input
           ref={fileInputRef}

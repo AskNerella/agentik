@@ -263,6 +263,41 @@ function App() {
     )
   }
 
+  const handleFetchAgentCardFromDirectEndpoint = async () => {
+    if (!endpoint.trim()) return
+
+    const baseEndpoint = endpoint.trim().replace(/\/+$/, '')
+    const candidateEndpoints = [
+      `${baseEndpoint}/.well-known/agent-card.json`,
+      `${baseEndpoint}/agent-card.json`,
+      `${baseEndpoint}/agent.json`,
+    ]
+
+    setNotification(null)
+    for (const candidate of candidateEndpoints) {
+      const nextCard = await loadAgentCard(candidate, requestHeaders)
+      if (nextCard && validateAgentCard(nextCard).valid) {
+        setEndpoint(candidate)
+        setEndpointProvided(true)
+        setSelectedTraceMessageId(null)
+        if (!activeSessionId) {
+          createSession({
+            keepConnection: true,
+            connected: true,
+            endpointValue: candidate,
+            agentCard: nextCard,
+          })
+        }
+        return
+      }
+    }
+
+    setEndpointProvided(false)
+    setNotification(
+      'Unable to connect from that URL. Tried /.well-known/agent-card.json, /agent-card.json, and /agent.json.',
+    )
+  }
+
   const handleEndpointChange = (value: string) => {
     setEndpoint(value)
     setEndpointProvided(false)
@@ -374,6 +409,28 @@ function App() {
     setMessages([])
     setSelectedTraceMessageId(null)
     setNotification('All chats deleted.')
+  }
+
+  const handleResetAllData = () => {
+    setSessions([])
+    setServers([])
+    setLogs([])
+    setMessages([])
+    setServerStatus({})
+    setClearedSessionTraceIds(new Set())
+    setActiveSessionId('')
+    setActiveContextId(crypto.randomUUID())
+    setEndpoint('')
+    setEndpointProvided(false)
+    setAuthMode('none')
+    setAuthToken('')
+    setOauthToken('')
+    setHeaders([])
+    setSelectedTraceMessageId(null)
+    setActivePage('playground')
+    clearAgentCard()
+    localStorage.removeItem(STORAGE_KEY)
+    setNotification('Playground reset. All servers, chats, monitoring data, and traces were removed.')
   }
 
   const handleRenameSession = (id: string, title: string) => {
@@ -511,6 +568,24 @@ function App() {
     sendChatMessage(activeMessageEndpoint.trim(), replayText, streaming, activeContextId, requestHeaders)
   }
 
+  const handleRefreshAgentCard = async () => {
+    const nextEndpoint = endpoint.trim()
+    if (!nextEndpoint) {
+      setNotification('No agent card URL available to refresh.')
+      return
+    }
+
+    const nextCard = await loadAgentCard(nextEndpoint, requestHeaders)
+    if (nextCard && validateAgentCard(nextCard).valid) {
+      setEndpointProvided(true)
+      setNotification('Agent card refreshed.')
+      return
+    }
+
+    setEndpointProvided(false)
+    setNotification('Unable to refresh agent card. Check endpoint and credentials.')
+  }
+
   const handleExportData = () => {
     const exportData: PlaygroundExport = {
       version: 1,
@@ -572,6 +647,7 @@ function App() {
         onRenameSession={handleRenameSession}
         onExportData={handleExportData}
         onImportData={handleImportData}
+        onResetAllData={handleResetAllData}
         activePage={activePage}
         onOpenMonitoring={() => setActivePage('monitoring')}
         collapsed={configCollapsed}
@@ -611,10 +687,14 @@ function App() {
             onHeadersChange={setHeaders}
             onSelectServer={handleSelectServer}
             onConnect={handleFetchAgentCard}
+            onConnectDirect={handleFetchAgentCardFromDirectEndpoint}
             onDisconnect={handleDisconnectAgent}
             onStreamingChange={setStreaming}
             onSend={handleSendMessage}
             onClear={handleClearAndStartNewSession}
+            onDeleteSession={() => {
+              if (activeSessionId) handleDeleteSession(activeSessionId)
+            }}
             contextId={activeContextId}
             connectionStatus={activeConnectionStatus}
             selectedTraceMessageId={selectedTraceMessageId}
@@ -632,6 +712,7 @@ function App() {
         messageCount={messages.length}
         artifacts={visibleArtifacts}
         onReplayTrace={handleReplayTrace}
+        onRefreshAgentCard={handleRefreshAgentCard}
         onClearTraces={handleClearTraces}
         collapsed={inspectorCollapsed}
         onToggleCollapsed={() => {

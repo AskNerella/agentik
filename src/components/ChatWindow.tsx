@@ -1,4 +1,4 @@
-import { AlertCircle, ChevronDown, Eraser, MessageSquare, PlugZap, Settings2, Unplug, X } from 'lucide-react'
+import { AlertCircle, ChevronDown, Eraser, MessageSquare, PlugZap, Settings2, Trash2, Unplug, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { A2AServer, AuthMode, ChatMessage, HeaderPair } from '../types/a2a'
@@ -31,10 +31,12 @@ type Props = {
   onHeadersChange: (value: HeaderPair[]) => void
   onSelectServer: (server: A2AServer) => void
   onConnect: () => void
+  onConnectDirect: () => void
   onDisconnect: () => void
   onStreamingChange: (enabled: boolean) => void
   onSend: (message: string) => void
   onClear: () => void
+  onDeleteSession: () => void
   selectedTraceMessageId: string | null
   onSelectMessageTrace: (messageId: string | null) => void
 }
@@ -65,10 +67,12 @@ export function ChatWindow({
   onHeadersChange,
   onSelectServer,
   onConnect,
+  onConnectDirect,
   onDisconnect,
   onStreamingChange,
   onSend,
   onClear,
+  onDeleteSession,
   selectedTraceMessageId,
   onSelectMessageTrace,
 }: Props) {
@@ -88,7 +92,12 @@ export function ChatWindow({
 
   const handleConnect = (event: FormEvent) => {
     event.preventDefault()
-    onConnect()
+    const url = endpoint.trim().toLowerCase()
+    if (url.includes('agent-card.json') || url.includes('agent.json')) {
+      onConnect()
+    } else {
+      onConnectDirect()
+    }
   }
 
   const addHeader = () => onHeadersChange([...headers, { id: crypto.randomUUID(), key: '', value: '' }])
@@ -157,8 +166,8 @@ export function ChatWindow({
           type="url"
           value={endpoint}
           onChange={(event) => onEndpointChange(event.target.value)}
-          placeholder="https://agent.example.com/.well-known/agent-card.json"
-          aria-label="Agent Card URL"
+          placeholder="Agent card or broker URL"
+          aria-label="Agent endpoint URL"
         />
         <button className="primary-button" type="submit" disabled={!endpoint.trim() || agentLoading}>
           {agentLoading ? 'Connecting...' : modal ? 'Reconnect' : 'Connect'}
@@ -275,6 +284,11 @@ export function ChatWindow({
           <button className="icon-button" type="button" onClick={onClear} aria-label="Clear messages">
             <Eraser size={17} />
           </button>
+          {hasSession ? (
+            <button className="icon-button" type="button" onClick={onDeleteSession} aria-label="Delete session">
+              <Trash2 size={16} />
+            </button>
+          ) : null}
         </div>
       </div>
 
