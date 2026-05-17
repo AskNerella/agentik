@@ -1,6 +1,9 @@
 import {
+  Bot,
   Check,
   ChevronDown,
+  Copy,
+  Database,
   LineChart,
   MoreVertical,
   PanelLeftClose,
@@ -32,6 +35,7 @@ type Props = {
   onDeleteServer: (id: string) => void
   onSelectServer: (server: A2AServer) => void
   onNewSession: () => void
+  onNewMcpSession: () => void
   onSelectSession: (id: string) => void
   onDeleteSession: (id: string) => void
   onDeleteAllSessions: () => void
@@ -62,6 +66,7 @@ export function ConfigPanel({
   onDeleteServer,
   onSelectServer,
   onNewSession,
+  onNewMcpSession,
   onSelectSession,
   onDeleteSession,
   onDeleteAllSessions,
@@ -87,8 +92,12 @@ export function ConfigPanel({
   const [draftOauthToken, setDraftOauthToken] = useState(oauthToken)
   const [draftHeaders, setDraftHeaders] = useState<HeaderPair[]>(headers)
   const [draftAuthMenuOpen, setDraftAuthMenuOpen] = useState(false)
+  const [sessionTypeModalOpen, setSessionTypeModalOpen] = useState(false)
+  const [serverTypePickerOpen, setServerTypePickerOpen] = useState(false)
+  const [draftServerKind, setDraftServerKind] = useState<'agent' | 'mcp'>('agent')
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [openServerMenuId, setOpenServerMenuId] = useState<string | null>(null)
+  const [copiedUrl, setCopiedUrl] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
   const serverMenuRef = useRef<HTMLDivElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -126,12 +135,13 @@ export function ConfigPanel({
       try {
         return new URL(draftEndpoint).host
       } catch {
-        return 'A2A Server'
+        return draftServerKind === 'mcp' ? 'MCP Server' : 'A2A Server'
       }
     })()
     const nextServer = {
       name: draftName.trim() || fallbackName,
       endpoint: draftEndpoint.trim(),
+      serverKind: draftServerKind,
       authMode: draftAuthMode,
       authToken: draftToken.trim(),
       oauthToken: draftOauthToken.trim(),
@@ -147,8 +157,9 @@ export function ConfigPanel({
     setServerModalOpen(false)
   }
 
-  const openServerModal = (server?: A2AServer) => {
+  const openServerModal = (server?: A2AServer, kind?: 'agent' | 'mcp') => {
     setEditingServer(server ?? null)
+    setDraftServerKind(server?.serverKind ?? kind ?? 'agent')
     setDraftName(server?.name ?? '')
     setDraftEndpoint(server?.endpoint ?? endpoint)
     setDraftAuthMode(server?.authMode ?? (server?.oauthToken ? 'oauth2' : server?.authToken ? 'bearer' : authMode))
@@ -277,7 +288,7 @@ export function ConfigPanel({
               type="button"
               onClick={() => {
                 setActiveTab('chats')
-                onNewSession()
+                setSessionTypeModalOpen(true)
               }}
             >
               <PlusCircle size={16} />
@@ -297,7 +308,7 @@ export function ConfigPanel({
             ) : (
               sessions.map((session) => (
                 <div
-                  className={`chat-session ${session.id === activeSessionId ? 'active' : ''}`}
+                  className={`chat-session ${session.id === activeSessionId ? 'active' : ''} ${session.sessionKind === 'mcp' ? 'chat-session-mcp' : ''}`}
                   key={session.id}
                 >
                   <button
@@ -308,9 +319,14 @@ export function ConfigPanel({
                       onSelectSession(session.id)
                     }}
                   >
-                    <div>
-                      <strong>{session.title}</strong>
-                      <span>{session.subtitle}</span>
+                    <div className="session-card-inner">
+                      <div className={`session-card-icon ${session.sessionKind === 'mcp' ? 'session-card-icon--mcp' : 'session-card-icon--agent'}`}>
+                        {session.sessionKind === 'mcp' ? <Database size={15} /> : <Bot size={15} />}
+                      </div>
+                      <div className="session-card-body">
+                        <strong>{session.title}</strong>
+                        <span>{session.sessionKind === 'mcp' ? 'MCP' : 'A2A'} · {session.messages.length} {session.messages.length === 1 ? 'entry' : 'entries'}</span>
+                      </div>
                     </div>
                   </button>
                   <div className="session-actions" ref={openMenuId === session.id ? menuRef : null}>
@@ -366,7 +382,7 @@ export function ConfigPanel({
           <button
             className="new-task-button"
             type="button"
-            onClick={() => openServerModal()}
+            onClick={() => setServerTypePickerOpen(true)}
           >
             <PlusCircle size={16} />
             New server
@@ -375,15 +391,22 @@ export function ConfigPanel({
             {servers.length === 0 ? (
               <div className="sidebar-empty">
                 <Server size={22} />
-                <p>Saved A2A servers will appear here.</p>
+                <p>Saved servers will appear here.</p>
               </div>
             ) : (
               servers.map((server) => (
                 <div className="server-item" key={server.id}>
-                  <button className="server-select-button" type="button" onClick={() => onSelectServer(server)}>
+                  <button className="server-select-button" type="button" onClick={() => {
+                    onSelectServer(server)
+                  }}>
                     <div>
                       <strong>
                         <span className={`status-dot status-${serverStatus[server.id] ?? 'unknown'}`} aria-hidden="true" />
+                        {server.serverKind === 'mcp' ? (
+                          <span className="session-kind-badge session-kind-badge--icon" aria-label="MCP">
+                            <Database size={10} />
+                          </span>
+                        ) : null}
                         {server.name}
                       </strong>
                       <span>
@@ -440,6 +463,124 @@ export function ConfigPanel({
         </div>
       )}
 
+      {sessionTypeModalOpen ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={() => setSessionTypeModalOpen(false)}
+        >
+          <div
+            className="modal session-type-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="New session type"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="modal-heading">
+              <h2>New session</h2>
+              <button
+                className="icon-button subtle"
+                type="button"
+                onClick={() => setSessionTypeModalOpen(false)}
+                aria-label="Close"
+              >
+                <X size={15} />
+              </button>
+            </div>
+            <p className="session-type-subtitle">What do you want to connect to?</p>
+            <div className="session-type-cards">
+              <button
+                className="session-type-card"
+                type="button"
+                onClick={() => {
+                  setSessionTypeModalOpen(false)
+                  onNewSession()
+                }}
+              >
+                <div className="session-type-card-icon">
+                  <Bot size={24} />
+                </div>
+                <strong>Agent (A2A)</strong>
+                <span>Connect to an AI agent using the Agent-to-Agent protocol. Supports streaming, artifacts, and multi-turn conversations.</span>
+              </button>
+              <button
+                className="session-type-card"
+                type="button"
+                onClick={() => {
+                  setSessionTypeModalOpen(false)
+                  onNewMcpSession()
+                }}
+              >
+                <div className="session-type-card-icon">
+                  <Database size={24} />
+                </div>
+                <strong>MCP Server</strong>
+                <span>Connect to a Model Context Protocol server. Browse tools, resources, and prompts — call tools directly with auto-generated forms.</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {serverTypePickerOpen ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={() => setServerTypePickerOpen(false)}
+        >
+          <div
+            className="modal session-type-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="New server type"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="modal-heading">
+              <h2>New server</h2>
+              <button
+                className="icon-button subtle"
+                type="button"
+                onClick={() => setServerTypePickerOpen(false)}
+                aria-label="Close"
+              >
+                <X size={15} />
+              </button>
+            </div>
+            <p className="session-type-subtitle">What kind of server are you adding?</p>
+            <div className="session-type-cards">
+              <button
+                className="session-type-card"
+                type="button"
+                onClick={() => {
+                  setServerTypePickerOpen(false)
+                  openServerModal(undefined, 'agent')
+                }}
+              >
+                <div className="session-type-card-icon">
+                  <Bot size={24} />
+                </div>
+                <strong>Agent (A2A)</strong>
+                <span>Save an AI agent endpoint. Use the Agent Card URL to connect and start chatting.</span>
+              </button>
+              <button
+                className="session-type-card"
+                type="button"
+                onClick={() => {
+                  setServerTypePickerOpen(false)
+                  openServerModal(undefined, 'mcp')
+                }}
+              >
+                <div className="session-type-card-icon">
+                  <Database size={24} />
+                </div>
+                <strong>MCP Server</strong>
+                <span>Save a Model Context Protocol server. Browse and call tools, resources, and prompts.</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {renameModalOpen && renamingSession ? (
         <div className="modal-backdrop" role="presentation" onMouseDown={() => setRenameModalOpen(false)}>
           <form className="modal" onSubmit={submitRename} onMouseDown={(event) => event.stopPropagation()}>
@@ -472,7 +613,9 @@ export function ConfigPanel({
         >
           <form className="modal" onSubmit={submitServer} onMouseDown={(event) => event.stopPropagation()}>
             <div className="modal-heading">
-              <h2>{editingServer ? 'Edit A2A server' : 'Add A2A server'}</h2>
+              <h2>{editingServer
+                  ? `Edit ${draftServerKind === 'mcp' ? 'MCP' : 'A2A'} server`
+                  : `Add ${draftServerKind === 'mcp' ? 'MCP' : 'A2A'} server`}</h2>
               <button
                 className="icon-button subtle"
                 type="button"
@@ -491,13 +634,32 @@ export function ConfigPanel({
               <input value={draftName} onChange={(event) => setDraftName(event.target.value)} placeholder="Research Agent" />
             </label>
             <label>
-              Agent Card URL
-              <input
-                type="url"
-                value={draftEndpoint}
-                onChange={(event) => setDraftEndpoint(event.target.value)}
-                placeholder="https://agent.example.com/.well-known/agent-card.json"
-              />
+              {draftServerKind === 'mcp' ? 'Server URL' : 'Agent Card URL'}
+              <div className="url-input-row">
+                <input
+                  type="url"
+                  value={draftEndpoint}
+                  onChange={(event) => setDraftEndpoint(event.target.value)}
+                  placeholder={draftServerKind === 'mcp'
+                    ? 'https://mcp.example.com/mcp'
+                    : 'https://agent.example.com/.well-known/agent-card.json'}
+                />
+                <button
+                  className="icon-button subtle no-tooltip"
+                  type="button"
+                  title={copiedUrl ? 'Copied!' : 'Copy URL'}
+                  aria-label="Copy URL"
+                  onClick={() => {
+                    if (!draftEndpoint.trim()) return
+                    navigator.clipboard.writeText(draftEndpoint.trim()).then(() => {
+                      setCopiedUrl(true)
+                      setTimeout(() => setCopiedUrl(false), 1800)
+                    })
+                  }}
+                >
+                  {copiedUrl ? <Check size={14} /> : <Copy size={14} />}
+                </button>
+              </div>
             </label>
             <label>
               Auth type

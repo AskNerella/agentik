@@ -1,23 +1,9 @@
-import { AppRenderer } from '@mcp-ui/client'
-import type { AppRendererProps } from '@mcp-ui/client'
+import { useRef } from 'react'
 import type { McpUIResource } from '../types/a2a'
-
-type OnCallTool = NonNullable<AppRendererProps['onCallTool']>
-type OnOpenLink = NonNullable<AppRendererProps['onOpenLink']>
 
 type Props = {
   resource: McpUIResource
   onSend?: (message: string) => void
-}
-
-function getToolName(uri: string): string {
-  try {
-    const url = new URL(uri)
-    const path = url.pathname.replace(/^\//, '')
-    return path || url.hostname || uri
-  } catch {
-    return uri.replace(/^ui:\/\//, '') || 'embedded-ui'
-  }
 }
 
 function decodeHtml(resource: McpUIResource): string | undefined {
@@ -32,20 +18,34 @@ function decodeHtml(resource: McpUIResource): string | undefined {
   return undefined
 }
 
-export function McpUIRenderer({ resource, onSend }: Props) {
+export function McpUIRenderer({ resource }: Props) {
   const html = decodeHtml(resource)
-  const toolName = getToolName(resource.uri)
-  const sandboxUrl = new URL('/mcp-ui-sandbox.html', window.location.href)
+  const iframeRef = useRef<HTMLIFrameElement>(null)
 
-  const handleCallTool: OnCallTool = async (params) => {
-    const argsText = params.arguments ? JSON.stringify(params.arguments, null, 2) : ''
-    onSend?.(`[Tool: ${params.name}]${argsText ? `\n${argsText}` : ''}`)
-    return { content: [{ type: 'text', text: 'Tool call forwarded to agent.' }] }
-  }
+  const handleLoad = () => {
+    const iframe = iframeRef.current
+    if (!iframe || !iframe.contentDocument) return
+    const doc = iframe.contentDocument
+    const body = doc.body
+    body.style.overflow = 'hidden'
+    body.style.margin = '0'
+    const root = doc.documentElement
+    root.style.width = '100%'
+    root.style.boxSizing = 'border-box'
 
-  const handleOpenLink: OnOpenLink = async ({ url }) => {
-    window.open(url, '_blank', 'noopener,noreferrer')
-    return {}
+    const updateHeight = () => {
+      const height = Math.max(body.scrollHeight, root.scrollHeight)
+      if (height > 0) iframe.style.height = `${height}px`
+    }
+
+    updateHeight()
+    // Re-measure after transitions/animations settle
+    setTimeout(updateHeight, 100)
+    setTimeout(updateHeight, 400)
+
+    // Keep in sync if content changes (carousel navigation etc.)
+    const observer = new (iframe.contentWindow as Window & typeof globalThis).ResizeObserver(updateHeight)
+    observer.observe(body)
   }
 
   if (!html) {
@@ -58,13 +58,14 @@ export function McpUIRenderer({ resource, onSend }: Props) {
 
   return (
     <div className="mcp-ui-resource">
-      <AppRenderer
-        toolName={toolName}
-        html={html}
-        sandbox={{ url: sandboxUrl }}
-        onOpenLink={handleOpenLink}
-        onCallTool={handleCallTool}
-        onError={(error) => console.error('[MCP UI] Render error:', error)}
+      <iframe
+        ref={iframeRef}
+        srcDoc={html}
+        sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+        className="mcp-message-iframe"
+        title="Agent UI"
+        scrolling="no"
+        onLoad={handleLoad}
       />
     </div>
   )

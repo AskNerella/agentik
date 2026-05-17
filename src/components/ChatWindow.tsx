@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { A2AServer, AuthMode, ChatMessage, HeaderPair } from '../types/a2a'
 import { MarkdownText } from './MarkdownText'
+import { McpUIRenderer } from './McpUIRenderer'
 import { MessageInput } from './MessageInput'
 
 type Props = {
@@ -120,7 +121,8 @@ export function ChatWindow({
         : 'Connected'
     : 'Disconnected'
   const headerAgentName = agentName?.trim() || (endpointProvided ? sessionTitle : 'Agent')
-  const selectedServer = servers.find((server) => server.endpoint === endpoint)
+  const agentServers = servers.filter((s) => s.serverKind !== 'mcp')
+  const selectedServer = agentServers.find((server) => server.endpoint === endpoint)
 
   const renderConnectForm = ({ modal = false }: { modal?: boolean } = {}) => (
     <form className={modal ? 'reconnect-form' : 'connect-state'} onSubmit={handleConnect}>
@@ -133,7 +135,7 @@ export function ChatWindow({
           <p>Fetch a valid agent card first. Once connected, messages will use the endpoint declared by that card.</p>
         </>
       ) : null}
-      {servers.length > 0 ? (
+      {agentServers.length > 0 ? (
         <div className="advanced-section">
           <span className="advanced-heading">Saved agent</span>
           <div className="auth-select connect-agent-select">
@@ -143,7 +145,7 @@ export function ChatWindow({
             </button>
             {serverMenuOpen ? (
               <div className="auth-menu">
-                {servers.map((server) => (
+                {agentServers.map((server) => (
                   <button
                     className={selectedServer?.id === server.id ? 'active' : ''}
                     type="button"
@@ -303,7 +305,7 @@ export function ChatWindow({
         ) : (
           messages.map((message) => (
             <article
-              className={`message ${message.role} ${message.status === 'error' ? 'message-error' : ''} ${selectedTraceMessageId === message.id ? 'message-selected' : ''}`}
+              className={`message ${message.role} ${message.status === 'error' ? 'message-error' : ''} ${selectedTraceMessageId === message.id ? 'message-selected' : ''} ${message.uiResources?.length ? 'message--has-ui' : ''}`}
               key={message.id}
               onClick={message.role === 'user' ? () => onSelectMessageTrace(selectedTraceMessageId === message.id ? null : message.id) : undefined}
             >
@@ -330,6 +332,9 @@ export function ChatWindow({
                 {message.content || message.isStreaming ? (
                   <>
                     <MarkdownText content={message.content} />
+                    {message.uiResources?.map((resource, idx) => (
+                      <McpUIRenderer key={`${message.id}-ui-${idx}`} resource={resource} onSend={onSend} />
+                    ))}
                     {message.isStreaming ? (
                       <>
                         {message.statusUpdates?.length ? (

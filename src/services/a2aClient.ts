@@ -105,7 +105,18 @@ function extractText(value: unknown): string | null {
 
   const parts = record.parts
   if (Array.isArray(parts)) {
-    return parts.map((part) => extractText(part)).filter(Boolean).join('')
+    return parts
+      .filter((part) => {
+        if (!part || typeof part !== 'object') return true
+        const p = part as Record<string, unknown>
+        if (p.kind !== 'text') return true
+        const meta = p.metadata && typeof p.metadata === 'object' ? (p.metadata as Record<string, unknown>) : null
+        const mimeType = meta && typeof meta.mimeType === 'string' ? meta.mimeType : ''
+        return !mimeType.includes('mcp-app')
+      })
+      .map((part) => extractText(part))
+      .filter(Boolean)
+      .join('')
   }
 
   const artifacts = record.artifacts
@@ -260,11 +271,33 @@ function extractUIResources(value: unknown): McpUIResource[] {
     partSources.push((result.artifact as Record<string, unknown>).parts)
   }
 
+  // Agent-composer often returns MCP UI parts under result.artifacts[].parts.
+  if (Array.isArray(result.artifacts)) {
+    for (const artifact of result.artifacts) {
+      if (artifact && typeof artifact === 'object') {
+        partSources.push((artifact as Record<string, unknown>).parts)
+      }
+    }
+  }
+
   for (const parts of partSources) {
     if (!Array.isArray(parts)) continue
     for (const part of parts) {
       if (!part || typeof part !== 'object') continue
       const p = part as Record<string, unknown>
+
+      const meta = p.metadata && typeof p.metadata === 'object' ? (p.metadata as Record<string, unknown>) : null
+      const partMimeType = meta && typeof meta.mimeType === 'string' ? meta.mimeType : ''
+
+      if (p.kind === 'text' && typeof p.text === 'string' && partMimeType.includes('mcp-app')) {
+        resources.push({
+          uri: `ui://agent/${crypto.randomUUID()}`,
+          mimeType: 'text/html;profile=mcp-app',
+          text: p.text,
+        })
+        continue
+      }
+
       if (p.kind !== 'resource' || !p.resource || typeof p.resource !== 'object') continue
       const r = p.resource as Record<string, unknown>
       const mimeType = typeof r.mimeType === 'string' ? r.mimeType : ''
@@ -372,6 +405,52 @@ function parseStreamLine(line: string): StreamChunk | null {
     }
 
     const final = isFinalA2AEvent(parsed)
+
+    // Explicit artifact-update handling: filter mcp-app text parts from text, extract as UI resources
+    const chunkKind = typeof parsed.kind === 'string' ? parsed.kind : ''
+    if (chunkKind === 'artifact-update' || (parsed.artifact && typeof parsed.artifact === 'object')) {
+      const rawParts: unknown[] = Array.isArray(
+        (parsed.artifact as Record<string, unknown> | undefined)?.parts,
+      )
+        ? ((parsed.artifact as Record<string, unknown>).parts as unknown[])
+        : []
+
+      const textContent = rawParts
+        .filter((p): p is Record<string, unknown> => {
+          if (!p || typeof p !== 'object') return false
+          const part = p as Record<string, unknown>
+          if (part.kind !== 'text') return false
+          const meta = part.metadata && typeof part.metadata === 'object' ? (part.metadata as Record<string, unknown>) : null
+          const mimeType = meta && typeof meta.mimeType === 'string' ? meta.mimeType : ''
+          return !mimeType.includes('mcp-app')
+        })
+        .map((p) => (typeof p.text === 'string' ? p.text : ''))
+        .join('')
+
+      const artifactUiResources: McpUIResource[] = rawParts
+        .filter((p): p is Record<string, unknown> => {
+          if (!p || typeof p !== 'object') return false
+          const part = p as Record<string, unknown>
+          if (part.kind !== 'text' || typeof part.text !== 'string') return false
+          const meta = part.metadata && typeof part.metadata === 'object' ? (part.metadata as Record<string, unknown>) : null
+          const mimeType = meta && typeof meta.mimeType === 'string' ? meta.mimeType : ''
+          return mimeType.includes('mcp-app')
+        })
+        .map((p) => {
+          const meta = p.metadata as Record<string, unknown>
+          return {
+            uri: `ui://chunk-${Date.now()}-${crypto.randomUUID()}`,
+            mimeType: (typeof meta?.mimeType === 'string' ? meta.mimeType : 'text/html;profile=mcp-app') as McpUIResource['mimeType'],
+            text: p.text as string,
+          }
+        })
+
+      const uiResourcesProp = artifactUiResources.length > 0 ? artifactUiResources : undefined
+      if (textContent || uiResourcesProp) {
+        return { type: 'token', content: textContent || undefined, final, uiResources: uiResourcesProp, raw: parsed }
+      }
+    }
+
     const artifact = extractArtifact(parsed)
     const uiResources = extractUIResources(parsed)
     const uiResourcesProp = uiResources.length > 0 ? uiResources : undefined

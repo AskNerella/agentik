@@ -83,6 +83,7 @@ export type ChatMessage = {
   artifacts?: AgentArtifact[]
   uiResources?: McpUIResource[]
   status?: 'ok' | 'error'
+  rawJson?: unknown
   createdAt: string
 }
 
@@ -113,12 +114,19 @@ export type ChatSession = {
   agentCard?: AgentCard | null
   renamed?: boolean
   updatedAt: string
+  // MCP session extras
+  sessionKind?: 'agent' | 'mcp'
+  mcpServerInfo?: McpServerInfo | null
+  mcpTools?: McpTool[]
+  mcpResources?: McpResource[]
+  mcpPrompts?: McpPrompt[]
 }
 
 export type A2AServer = {
   id: string
   name: string
   endpoint: string
+  serverKind?: 'agent' | 'mcp'
   authMode?: AuthMode
   authToken: string
   oauthToken?: string
@@ -132,4 +140,55 @@ export type PlaygroundExport = {
   sessions: ChatSession[]
   servers: A2AServer[]
   traces: TraceLog[]
+}
+
+// ─── MCP Client types ────────────────────────────────────────────────────────
+
+export type McpToolProperty = {
+  type?: string
+  description?: string
+  enum?: unknown[]
+  default?: unknown
+  items?: McpToolProperty
+}
+
+export type McpTool = {
+  name: string
+  description?: string
+  inputSchema: {
+    type: string
+    properties?: Record<string, McpToolProperty>
+    required?: string[]
+  }
+}
+
+export type McpResource = {
+  uri: string
+  name: string
+  description?: string
+  mimeType?: string
+}
+
+export type McpPrompt = {
+  name: string
+  description?: string
+  arguments?: { name: string; description?: string; required?: boolean }[]
+}
+
+export type McpServerInfo = {
+  name: string
+  version: string
+  capabilities?: {
+    tools?: object
+    resources?: object
+    prompts?: object
+  }
+}
+
+export type McpSession = {
+  sessionKind: 'mcp'
+  mcpServerInfo: McpServerInfo | null
+  mcpTools: McpTool[]
+  mcpResources: McpResource[]
+  mcpPrompts: McpPrompt[]
 }
