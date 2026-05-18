@@ -1,4 +1,6 @@
-import { useRef } from 'react'
+import { AppRenderer } from '@mcp-ui/client'
+import { useMemo } from 'react'
+import type { AppRendererProps } from '@mcp-ui/client'
 import type { McpUIResource } from '../types/a2a'
 
 type Props = {
@@ -18,35 +20,18 @@ function decodeHtml(resource: McpUIResource): string | undefined {
   return undefined
 }
 
-export function McpUIRenderer({ resource }: Props) {
+function contentToText(content: Parameters<NonNullable<AppRendererProps['onMessage']>>[0]['content']) {
+  return content
+    .map((block) => ('text' in block && typeof block.text === 'string' ? block.text : ''))
+    .filter(Boolean)
+    .join('\n')
+    .trim()
+}
+
+export function McpUIRenderer({ resource, onSend }: Props) {
   const html = decodeHtml(resource)
-  const iframeRef = useRef<HTMLIFrameElement>(null)
-
-  const handleLoad = () => {
-    const iframe = iframeRef.current
-    if (!iframe || !iframe.contentDocument) return
-    const doc = iframe.contentDocument
-    const body = doc.body
-    body.style.overflow = 'hidden'
-    body.style.margin = '0'
-    const root = doc.documentElement
-    root.style.width = '100%'
-    root.style.boxSizing = 'border-box'
-
-    const updateHeight = () => {
-      const height = Math.max(body.scrollHeight, root.scrollHeight)
-      if (height > 0) iframe.style.height = `${height}px`
-    }
-
-    updateHeight()
-    // Re-measure after transitions/animations settle
-    setTimeout(updateHeight, 100)
-    setTimeout(updateHeight, 400)
-
-    // Keep in sync if content changes (carousel navigation etc.)
-    const observer = new (iframe.contentWindow as Window & typeof globalThis).ResizeObserver(updateHeight)
-    observer.observe(body)
-  }
+  const sandboxUrl = useMemo(() => new URL('/mcp-ui-sandbox.html?v=app-renderer-proxy', window.location.href), [])
+  const toolName = useMemo(() => resource.uri.replace(/^ui:\/\//, '') || 'agent-ui', [resource.uri])
 
   if (!html) {
     return (
@@ -58,14 +43,29 @@ export function McpUIRenderer({ resource }: Props) {
 
   return (
     <div className="mcp-ui-resource">
-      <iframe
-        ref={iframeRef}
-        srcDoc={html}
-        sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-        className="mcp-message-iframe"
-        title="Agent UI"
-        scrolling="no"
-        onLoad={handleLoad}
+      <AppRenderer
+        html={html}
+        toolName={toolName}
+        sandbox={{
+          url: sandboxUrl,
+          permissions: 'allow-scripts allow-same-origin allow-forms allow-popups',
+        }}
+        hostInfo={{ name: 'Agentik', version: '1.0.0' }}
+        hostCapabilities={{
+          openLinks: {},
+          message: { text: {} },
+          logging: {},
+        }}
+        onMessage={async ({ content }) => {
+          const message = contentToText(content)
+          if (!message || !onSend) return { isError: true }
+          onSend(message)
+          return {}
+        }}
+        onOpenLink={async ({ url }) => {
+          window.open(url, '_blank', 'noopener,noreferrer')
+          return {}
+        }}
       />
     </div>
   )

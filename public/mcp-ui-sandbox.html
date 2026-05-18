@@ -5,10 +5,40 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MCP UI Sandbox</title>
     <style>
-      html, body { margin: 0; padding: 0; background: transparent; }
+      html,
+      body {
+        width: 100%;
+        height: auto;
+        margin: 0;
+        padding: 0;
+        background: transparent;
+      }
     </style>
   </head>
   <body>
-    <script src="/mcp-ui-sandbox.js"></script>
+    <script>
+      window.addEventListener('message', (event) => {
+        const data = event.data
+        if (!data || typeof data !== 'object') return
+
+        if (data.method === 'ui/notifications/sandbox-resource-ready') {
+          const html = data.params && data.params.html
+          if (typeof html !== 'string' || !html) return
+
+          document.open()
+          document.write(html)
+          document.close()
+        }
+      })
+
+      window.parent.postMessage(
+        {
+          jsonrpc: '2.0',
+          method: 'ui/notifications/sandbox-proxy-ready',
+          params: {},
+        },
+        '*',
+      )
+    </script>
   </body>
 </html>

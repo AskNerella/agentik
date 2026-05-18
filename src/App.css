@@ -3750,6 +3750,14 @@ pre {
   margin-top: 16px;
 }
 
+.mcp-ui-resource:not(.mcp-ui-resource--empty) {
+  min-height: 120px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
 .mcp-ui-resource--empty {
   color: var(--faint);
   font-size: 13px;
@@ -3845,4 +3853,3 @@ pre {
     grid-template-columns: 1fr;
   }
 }
-
