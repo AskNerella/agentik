@@ -6,6 +6,10 @@ import { MarkdownText } from './MarkdownText'
 import { McpUIRenderer } from './McpUIRenderer'
 import { MessageInput } from './MessageInput'
 
+function estimateTokens(text: string): number {
+  return Math.max(1, Math.ceil(text.trim().length / 4))
+}
+
 type Props = {
   sessionTitle: string
   agentName?: string | null
@@ -360,6 +364,9 @@ export function ChatWindow({
                   'Waiting for response...'
                 )}
               </div>
+              {message.role === 'agent' && message.content && !message.isStreaming ? (
+                <div className="message-token-count">~{estimateTokens(message.content)} tokens in context</div>
+              ) : null}
             </article>
           ))
         )}

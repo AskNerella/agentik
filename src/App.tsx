@@ -106,7 +106,7 @@ function App() {
   const [mcpPrompts, setMcpPrompts] = useState<McpPrompt[]>([])
   const [mcpLoading, setMcpLoading] = useState(false)
 
-  const { logs, appendTrace, setLogs } = useTrace(storedData.traces ?? [])
+  const { logs, appendTrace, clearLogs, setLogs } = useTrace(storedData.traces ?? [])
   const { card, setCard, clearAgentCard, validation, loading: agentLoading, error: agentError, loadAgentCard } = useAgent(appendTrace)
   const updateSessionMessages = useCallback((contextId: string, updater: (messages: ChatSession['messages']) => ChatSession['messages']) => {
     setSessions((current) =>
@@ -143,13 +143,12 @@ function App() {
   const activeAgentName = card?.name || activeSession?.agentCard?.name || servers.find((server) => server.endpoint === endpoint)?.name || null
   const visibleArtifacts = useMemo(
     () =>
-      messages.flatMap((message) => {
-        const messageText = normalizeArtifactText(message.content)
-        return (message.artifacts ?? []).filter((artifact) => {
+      messages.flatMap((message) =>
+        (message.artifacts ?? []).filter((artifact) => {
           const artifactText = normalizeArtifactText(artifact.content)
-          return artifactText && artifactText !== messageText
-        })
-      }),
+          return Boolean(artifactText)
+        }),
+      ),
     [messages],
   )
   const activeSessionLogs = useMemo(
@@ -472,7 +471,7 @@ function App() {
   const handleResetAllData = () => {
     setSessions([])
     setServers([])
-    setLogs([])
+    clearLogs()
     setMessages([])
     setServerStatus({})
     setClearedSessionTraceIds(new Set())
@@ -517,6 +516,12 @@ function App() {
     })
     setSelectedTraceMessageId(null)
     setNotification('Session traces cleared.')
+  }
+
+  const handleClearAllTraces = () => {
+    clearLogs()
+    setClearedSessionTraceIds(new Set())
+    setNotification('All traces cleared.')
   }
 
   const handleSaveServer = (server: Omit<A2AServer, 'id' | 'createdAt'>) => {
@@ -1038,7 +1043,7 @@ function App() {
           </div>
         ) : null}
         {activePage === 'monitoring' ? (
-          <MonitoringPage logs={logs} onClearTraces={handleClearTraces} onReplayTrace={handleReplayTrace} />
+          <MonitoringPage logs={logs} onClearTraces={handleClearAllTraces} onReplayTrace={handleReplayTrace} />
         ) : activeSession?.sessionKind === 'mcp' ? (
           <McpChatWindow
             sessionTitle={activeSession?.title ?? 'MCP session'}

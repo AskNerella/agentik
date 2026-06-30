@@ -8,8 +8,10 @@ import {
   Database,
   Eraser,
   FileText,
+  Info,
   Loader2,
   PlugZap,
+  RotateCcw,
   Search,
   Settings2,
   Trash2,
@@ -173,17 +175,20 @@ function ToolForm({
   onCall,
   onClose,
   loading,
+  initialArgs = {},
 }: {
   tool: McpTool
   onCall: (args: Record<string, unknown>) => void
   onClose: () => void
   loading: boolean
+  initialArgs?: Record<string, unknown>
 }) {
   const props = tool.inputSchema?.properties ?? {}
   const required = tool.inputSchema?.required ?? []
-  const [args, setArgs] = useState<Record<string, unknown>>(() =>
-    Object.fromEntries(Object.entries(props).map(([k, p]) => [k, p.default ?? ''])),
-  )
+  const [args, setArgs] = useState<Record<string, unknown>>(() => {
+    const defaults = Object.fromEntries(Object.entries(props).map(([k, p]) => [k, p.default ?? '']))
+    return { ...defaults, ...initialArgs }
+  })
 
   const setField = (name: string, value: unknown) =>
     setArgs((prev) => ({ ...prev, [name]: value }))
@@ -480,6 +485,75 @@ function McpConnectForm({
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+function estimateTokens(text: string): number {
+  return Math.max(1, Math.ceil(text.trim().length / 4))
+}
+
+function tryParseJson(text: string): unknown | null {
+  try {
+    const parsed: unknown = JSON.parse(text)
+    if (parsed !== null && (typeof parsed === 'object' || Array.isArray(parsed))) return parsed
+    return null
+  } catch {
+    return null
+  }
+}
+
+// ─── JSON syntax highlighter ──────────────────────────────────────────────────
+function JsonNode({ value }: { value: unknown }) {
+  if (value === null) return <span className="json-null">null</span>
+  if (value === undefined) return <span className="json-null">undefined</span>
+  if (typeof value === 'boolean') return <span className="json-bool">{String(value)}</span>
+  if (typeof value === 'number') return <span className="json-number">{String(value)}</span>
+  if (typeof value === 'string') {
+    return (
+      <span className="json-string">
+        <span className="json-quote">&quot;</span>
+        {value}
+        <span className="json-quote">&quot;</span>
+      </span>
+    )
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) return <span className="json-punct">[]</span>
+    return (
+      <>
+        <span className="json-punct">{'['}</span>
+        <div className="json-indent">
+          {value.map((item, i) => (
+            <div key={i}>
+              <JsonNode value={item} />
+              {i < value.length - 1 ? <span className="json-punct">,</span> : null}
+            </div>
+          ))}
+        </div>
+        <span className="json-punct">{']'}</span>
+      </>
+    )
+  }
+  if (typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+    if (entries.length === 0) return <span className="json-punct">{'{}'}</span>
+    return (
+      <>
+        <span className="json-punct">{'{'}</span>
+        <div className="json-indent">
+          {entries.map(([key, val], i) => (
+            <div key={key}>
+              <span className="json-key">&quot;{key}&quot;</span>
+              <span className="json-punct">: </span>
+              <JsonNode value={val} />
+              {i < entries.length - 1 ? <span className="json-punct">,</span> : null}
+            </div>
+          ))}
+        </div>
+        <span className="json-punct">{'}'}</span>
+      </>
+    )
+  }
+  return <span>{String(value)}</span>
+}
+
 function isHtmlContent(content: string): boolean {
   if (!content) return false
   const trimmed = content.trimStart()
@@ -525,6 +599,7 @@ export function McpChatWindow({
   onDeleteSession,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const workspaceRef = useRef<HTMLDivElement | null>(null)
   const [activeTab, setActiveTab] = useState<McpTab>('tools')
   const [toolSearch, setToolSearch] = useState('')
   const [selectedTool, setSelectedTool] = useState<McpTool | null>(null)
@@ -533,14 +608,34 @@ export function McpChatWindow({
   const [expandedMessage, setExpandedMessage] = useState<string | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [msgView, setMsgView] = useState<Record<string, 'preview' | 'raw'>>({})
-
-  // Auto-expand the latest result whenever messages update
+  const [browserWidth, setBrowserWidth] = useState(300)
+  const [isDragging, setIsDragging] = useState(false)
+  const [tokenInfoTool, setTokenInfoTool] = useState<McpTool | null>(null)
+  const [selectedToolArgs, setSelectedToolArgs] = useState<Record<string, unknown>>({})  // Auto-expand the latest result whenever messages update
   useEffect(() => {
     const last = [...messages].reverse().find((m) => m.role === 'agent' && !m.isStreaming)
     if (last) setExpandedMessage(last.id)
   }, [messages])
   const [promptArgs, setPromptArgs] = useState<Record<string, Record<string, string>>>({})
   const [runningPrompt, setRunningPrompt] = useState<string | null>(null)
+
+  // Drag-to-resize the browser panel
+  useEffect(() => {
+    if (!isDragging) return
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!workspaceRef.current) return
+      const rect = workspaceRef.current.getBoundingClientRect()
+      const newWidth = Math.max(200, Math.min(560, e.clientX - rect.left))
+      setBrowserWidth(newWidth)
+    }
+    const handleMouseUp = () => setIsDragging(false)
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isDragging])
 
   const filteredTools = useMemo(
     () =>
@@ -598,6 +693,17 @@ export function McpChatWindow({
       setTimeout(() => {
         scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
       }, 100)
+    }
+  }
+
+  const handleRerunCall = (msg: { rawJson?: unknown }) => {
+    const raw = msg.rawJson as { params?: { name?: string; arguments?: Record<string, unknown> } } | undefined
+    const toolName = raw?.params?.name
+    const args = raw?.params?.arguments ?? {}
+    const tool = mcpTools.find((t) => t.name === toolName)
+    if (tool) {
+      setSelectedToolArgs(args)
+      setSelectedTool(tool)
     }
   }
 
@@ -670,7 +776,11 @@ export function McpChatWindow({
           />
         </div>
       ) : (
-        <div className="mcp-workspace">
+        <div
+          className={`mcp-workspace${isDragging ? ' mcp-workspace-dragging' : ''}`}
+          ref={workspaceRef}
+          style={{ gridTemplateColumns: `${browserWidth}px 6px 1fr` }}
+        >
           {/* ── Left: browser panel ── */}
           <div className="mcp-browser">
             {/* Tab strip */}
@@ -735,23 +845,39 @@ export function McpChatWindow({
                       {toolSearch ? 'No tools match your search.' : 'No tools available.'}
                     </div>
                   ) : (
-                    filteredTools.map((tool) => (
-                      <button
-                        key={tool.name}
-                        className="mcp-list-item"
-                        type="button"
-                        onClick={() => setSelectedTool(tool)}
-                      >
-                        <div className="mcp-list-item-icon">
-                          <Wrench size={13} />
+                    filteredTools.map((tool) => {
+                      const nameTokens = estimateTokens(tool.name)
+                      const descTokens = estimateTokens(tool.description ?? '')
+                      const totalTokens = nameTokens + descTokens
+                      return (
+                        <div key={tool.name} className="mcp-tool-row">
+                          <button
+                            className="mcp-list-item"
+                            type="button"
+                            onClick={() => setSelectedTool(tool)}
+                          >
+                            <div className="mcp-list-item-icon">
+                              <Wrench size={13} />
+                            </div>
+                            <div className="mcp-list-item-body">
+                              <strong>{tool.name}</strong>
+                              {tool.description ? <span>{tool.description}</span> : null}
+                            </div>
+                            <span className="mcp-token-badge">~{totalTokens} tok</span>
+                            <ChevronRight size={14} className="mcp-list-item-chevron" />
+                          </button>
+                          <button
+                            className="mcp-info-btn"
+                            type="button"
+                            onClick={() => setTokenInfoTool(tool)}
+                            aria-label="Show token usage info"
+                            title="Token usage info"
+                          >
+                            <Info size={12} />
+                          </button>
                         </div>
-                        <div className="mcp-list-item-body">
-                          <strong>{tool.name}</strong>
-                          {tool.description ? <span>{tool.description}</span> : null}
-                        </div>
-                        <ChevronRight size={14} className="mcp-list-item-chevron" />
-                      </button>
-                    ))
+                      )
+                    })
                   )}
                 </div>
               </>
@@ -864,6 +990,13 @@ export function McpChatWindow({
             ) : null}
           </div>
 
+          {/* ── Resize handle ── */}
+          <div
+            className="mcp-resize-handle"
+            onMouseDown={(e) => { e.preventDefault(); setIsDragging(true) }}
+            aria-hidden="true"
+          />
+
           {/* ── Right: history ── */}
           <div className="mcp-history" ref={scrollRef}>
             {messages.length === 0 ? (
@@ -878,6 +1011,9 @@ export function McpChatWindow({
                 const isResult = msg.role === 'agent'
                 const view = msgView[msg.id] ?? 'preview'
                 const hasRaw = isResult && msg.rawJson !== undefined
+                const parsedJson = isResult && !msg.isStreaming && view === 'preview'
+                  ? tryParseJson(msg.content)
+                  : null
 
                 return (
                   <article
@@ -939,15 +1075,27 @@ export function McpChatWindow({
                           </button>
                         ) : null}
                         {isToolCall ? (
-                          <button
-                            className="mcp-msg-btn"
-                            type="button"
-                            onClick={() => onClearMessage(msg.id)}
-                            title="Remove this request"
-                            aria-label="Remove"
-                          >
-                            <X size={12} />
-                          </button>
+                          <>
+                            <button
+                              className="mcp-msg-btn mcp-msg-btn-rerun"
+                              type="button"
+                              onClick={() => handleRerunCall(msg)}
+                              title="Edit & re-run"
+                              aria-label="Edit and re-run this call"
+                            >
+                              <RotateCcw size={12} />
+                              Re-run
+                            </button>
+                            <button
+                              className="mcp-msg-btn"
+                              type="button"
+                              onClick={() => onClearMessage(msg.id)}
+                              title="Remove this request"
+                              aria-label="Remove"
+                            >
+                              <X size={12} />
+                            </button>
+                          </>
                         ) : null}
                       </div>
                     </div>
@@ -963,6 +1111,10 @@ export function McpChatWindow({
                         sandbox="allow-scripts allow-same-origin"
                         title="Resource preview"
                       />
+                    ) : parsedJson !== null ? (
+                      <div className={`mcp-message-body json-body ${isResult && !isExpanded ? 'mcp-message-clamped' : ''}`}>
+                        <JsonNode value={parsedJson} />
+                      </div>
                     ) : (
                       <pre
                         className={`mcp-message-body ${isResult && !isExpanded ? 'mcp-message-clamped' : ''}`}
@@ -987,6 +1139,11 @@ export function McpChatWindow({
                         {new Date(msg.createdAt).toLocaleTimeString()}
                       </div>
                     ) : null}
+                    {isResult && msg.content && !msg.isStreaming ? (
+                      <div className="mcp-token-count">
+                        ~{estimateTokens(msg.content)} tokens in context
+                      </div>
+                    ) : null}
                   </article>
                 )
               })
@@ -1009,11 +1166,70 @@ export function McpChatWindow({
               tool={selectedTool}
               loading={callingTool}
               onCall={(args) => handleCallTool(selectedTool.name, args)}
-              onClose={() => setSelectedTool(null)}
+              onClose={() => { setSelectedTool(null); setSelectedToolArgs({}) }}
+              initialArgs={selectedToolArgs}
             />
           </div>
         </div>
       ) : null}
+
+      {/* ── Token info modal ── */}
+      {tokenInfoTool ? (() => {
+        const nameTokens = estimateTokens(tokenInfoTool.name)
+        const descTokens = estimateTokens(tokenInfoTool.description ?? '')
+        const totalTokens = nameTokens + descTokens
+        return (
+          <div
+            className="modal-backdrop"
+            role="presentation"
+            onMouseDown={() => setTokenInfoTool(null)}
+          >
+            <div
+              className="modal mcp-token-info-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Token usage breakdown"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <div className="modal-heading">
+                <div>
+                  <h2>Token usage</h2>
+                  <p className="mcp-tool-form-desc">{tokenInfoTool.name}</p>
+                </div>
+                <button
+                  className="icon-button subtle"
+                  type="button"
+                  onClick={() => setTokenInfoTool(null)}
+                  aria-label="Close"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+              <div className="mcp-token-info-body">
+                <div className="mcp-token-info-row">
+                  <span>Name</span>
+                  <span>~{nameTokens} tokens</span>
+                </div>
+                {tokenInfoTool.description ? (
+                  <div className="mcp-token-info-row">
+                    <span>Description</span>
+                    <span>~{descTokens} tokens</span>
+                  </div>
+                ) : null}
+                <div className="mcp-token-info-row mcp-token-info-total">
+                  <span>Total in context</span>
+                  <span>~{totalTokens} tokens</span>
+                </div>
+                {tokenInfoTool.description ? (
+                  <p className="mcp-token-info-note">
+                    Estimates are based on ~4 characters per token. Actual counts vary by model tokenizer.
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        )
+      })() : null}
     </section>
   )
 }

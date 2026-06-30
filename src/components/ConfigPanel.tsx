@@ -369,11 +369,8 @@ export function ConfigPanel({
         </div>
       ) : activeTab === 'monitoring' ? (
         <div className="sidebar-content">
-          <button className="new-task-button" type="button" onClick={onOpenMonitoring}>
-            <LineChart size={18} />
-            Open monitoring
-          </button>
           <div className="sidebar-empty">
+            <LineChart size={22} />
             <p>Search traces and inspect request history from the monitoring page.</p>
           </div>
         </div>
