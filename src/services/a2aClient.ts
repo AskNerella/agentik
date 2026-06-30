@@ -6,6 +6,7 @@ import type {
   MessageResponse,
   StreamChunk,
 } from '../types/a2a'
+import { httpFetch } from '../utils/http'
 
 function buildHeaders(headers?: Record<string, string>, includeContentType = true) {
   return {
@@ -21,19 +22,7 @@ function normalizeFetchError(caught: unknown) {
       'Agent card not found or unavailable. Check the URL, server status, and gateway configuration.',
     )
   }
-
   return caught
-}
-
-function toProxyUrl(endpoint: string) {
-  try {
-    const url = new URL(endpoint)
-    if (!['http:', 'https:'].includes(url.protocol)) return endpoint
-    const proxyBase = import.meta.env.VITE_A2A_PROXY_BASE || '/proxy/request'
-    return `${proxyBase}?url=${encodeURIComponent(url.toString())}`
-  } catch {
-    return endpoint
-  }
 }
 
 async function parseJsonResponse<T>(response: Response): Promise<T> {
@@ -343,7 +332,7 @@ export async function fetchAgentCard(
   headers?: Record<string, string>,
 ): Promise<AgentCard> {
   try {
-    const response = await fetch(toProxyUrl(endpoint), {
+    const response = await httpFetch(endpoint, {
       method: 'GET',
       headers: buildHeaders(headers, false),
     })
@@ -359,7 +348,7 @@ export async function sendMessage(
   payload: A2AJsonRpcMessageRequest,
   headers?: Record<string, string>,
 ): Promise<MessageResponse> {
-  const response = await fetch(toProxyUrl(endpoint), {
+  const response = await httpFetch(endpoint, {
     method: 'POST',
     headers: buildHeaders(headers),
     body: JSON.stringify(payload),
@@ -481,7 +470,7 @@ export async function streamMessage(
   onChunk: (chunk: StreamChunk) => void,
   headers?: Record<string, string>,
 ): Promise<void> {
-  const response = await fetch(toProxyUrl(endpoint), {
+  const response = await httpFetch(endpoint, {
     method: 'POST',
     headers: buildHeaders(headers),
     body: JSON.stringify(payload),

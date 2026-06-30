@@ -1,4 +1,5 @@
 import type { McpPrompt, McpResource, McpServerInfo, McpTool } from '../types/a2a'
+import { httpFetch } from '../utils/http'
 
 // Per-endpoint session IDs for MCP Streamable HTTP transport.
 // Cleared when the user disconnects (see clearMcpSession).
@@ -6,17 +7,6 @@ const mcpSessionIds = new Map<string, string>()
 
 export function clearMcpSession(endpoint: string): void {
   mcpSessionIds.delete(endpoint)
-}
-
-function toProxyUrl(endpoint: string) {
-  try {
-    const url = new URL(endpoint)
-    if (!['http:', 'https:'].includes(url.protocol)) return endpoint
-    const proxyBase = import.meta.env.VITE_A2A_PROXY_BASE || '/proxy/request'
-    return `${proxyBase}?url=${encodeURIComponent(url.toString())}`
-  } catch {
-    return endpoint
-  }
 }
 
 function buildHeaders(extra?: Record<string, string>) {
@@ -41,7 +31,7 @@ async function rpc<T>(
     params,
   })
 
-  const response = await fetch(toProxyUrl(endpoint), {
+  const response = await httpFetch(endpoint, {
     method: 'POST',
     headers: {
       ...buildHeaders(headers),
@@ -107,7 +97,7 @@ async function notify(
   headers?: Record<string, string>,
 ): Promise<void> {
   const sessionId = mcpSessionIds.get(endpoint)
-  await fetch(toProxyUrl(endpoint), {
+  await httpFetch(endpoint, {
     method: 'POST',
     headers: {
       ...buildHeaders(headers),

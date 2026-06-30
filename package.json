@@ -4,15 +4,18 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "node scripts/dev-with-proxy.mjs",
+    "dev": "tauri dev",
     "dev:ui": "vite",
-    "proxy": "npm --prefix ../a2a-proxy start",
-    "build": "tsc -b && vite build",
+    "build": "tauri build",
+    "build:ui": "tsc -b && vite build",
+    "tauri": "tauri",
     "lint": "eslint .",
-    "preview": "node scripts/dev-with-proxy.mjs --preview"
+    "preview": "vite preview"
   },
   "dependencies": {
     "@mcp-ui/client": "^7.1.1",
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-http": "^2",
     "lucide-react": "^1.11.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
@@ -21,6 +24,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@tauri-apps/cli": "^2",
     "@types/node": "^24.12.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

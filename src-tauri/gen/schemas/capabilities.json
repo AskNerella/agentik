@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Default capability — allows outbound HTTP requests to any http/https URL.","local":true,"windows":["main"],"permissions":["core:default",{"identifier":"http:default","allow":[{"url":"http://**"},{"url":"https://**"}]}]}}

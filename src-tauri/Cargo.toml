@@ -1,0 +1,31 @@
+[package]
+name = "agentik-playground"
+version = "0.1.0"
+description = "Agentik A2A & MCP Playground — desktop app"
+authors = []
+edition = "2021"
+rust-version = "1.77.2"
+
+# Required for Tauri — do not remove.
+[lib]
+name = "agentik_playground_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri            = { version = "2", features = [] }
+# HTTP plugin: routes fetch() requests through Rust/reqwest, bypassing CORS.
+tauri-plugin-http = "2"
+serde            = { version = "1", features = ["derive"] }
+serde_json       = "1"
+# cookie 0.18.1 is not compatible with time 0.3.52's parsing API yet.
+time             = "=0.3.51"
+
+[profile.release]
+panic        = "abort"
+codegen-units = 1
+lto          = true
+opt-level    = "s"
+strip        = true

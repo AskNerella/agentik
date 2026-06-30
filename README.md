@@ -1,6 +1,6 @@
-# A2A Playground
+# Agentik Playground
 
-A modern, developer-friendly UI for testing and debugging **Agent-to-Agent (A2A)** compatible agents.
+A Tauri desktop app for testing and debugging **Agent-to-Agent (A2A)** agents and **Model Context Protocol (MCP)** servers.
 
 ## Features
 
@@ -14,14 +14,16 @@ A modern, developer-friendly UI for testing and debugging **Agent-to-Agent (A2A)
 
 - React 19 + TypeScript
 - Vite
+- Tauri 2
+- Tauri HTTP plugin (native A2A/MCP requests without browser CORS restrictions)
 - Lucide React (icons)
-- Node.js proxy API for CORS-safe A2A calls
 
 ## Getting Started
 
 ### Prerequisites
 
 - Node.js 18+
+- Rust 1.77.2+ and the [Tauri system prerequisites](https://v2.tauri.app/start/prerequisites/)
 - npm
 
 ### Install & Run
@@ -31,16 +33,17 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173) in your browser.
+`npm run dev` starts Vite and opens the Tauri desktop window. A separate proxy process is not required; outbound HTTP is handled by Tauri's native HTTP plugin.
 
-`npm run dev` starts both the Vite UI and the separate `../a2a-proxy` Node.js proxy on port `8089`.
+To run only the browser UI, use `npm run dev:ui`. Browser mode uses normal browser networking, so target A2A and MCP servers must allow CORS from `http://localhost:5173`.
 
 ### Build for Production
 
 ```bash
 npm run build
-npm run preview
 ```
+
+The platform installer or application bundle is written below `src-tauri/target/release/bundle/`.
 
 ## Project Structure
 
@@ -51,4 +54,5 @@ src/
   services/      # A2A API client (fetchAgentCard, sendMessage, streamMessage)
   types/         # TypeScript types (AgentCard, MessageRequest, TraceLog, etc.)
   utils/         # Validation and helpers
+src-tauri/        # Tauri configuration, capabilities, and Rust entry point
 ```
