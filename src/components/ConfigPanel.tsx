@@ -6,13 +6,10 @@ import {
   Database,
   LineChart,
   MoreVertical,
-  PanelLeftClose,
-  PanelLeftOpen,
   Pencil,
   PlusCircle,
   Server,
   Trash2,
-  Upload,
   Download,
   X,
 } from 'lucide-react'
@@ -22,10 +19,6 @@ import type { A2AServer, AuthMode, ChatSession, HeaderPair } from '../types/a2a'
 
 type Props = {
   endpoint: string
-  authMode: AuthMode
-  authToken: string
-  oauthToken: string
-  headers: HeaderPair[]
   sessions: ChatSession[]
   servers: A2AServer[]
   serverStatus: Record<string, 'checking' | 'online' | 'offline' | 'unknown'>
@@ -40,23 +33,15 @@ type Props = {
   onDeleteSession: (id: string) => void
   onDeleteAllSessions: () => void
   onRenameSession: (id: string, title: string) => void
-  onExportData: () => void
-  onImportData: (file: File) => void
-  onResetAllData: () => void
   activePage: 'playground' | 'monitoring'
   onOpenMonitoring: () => void
   collapsed: boolean
-  onToggleCollapsed: () => void
 }
 
 type SidebarTab = 'chats' | 'servers' | 'monitoring'
 
 export function ConfigPanel({
   endpoint,
-  authMode,
-  authToken,
-  oauthToken,
-  headers,
   sessions,
   servers,
   serverStatus,
@@ -71,13 +56,9 @@ export function ConfigPanel({
   onDeleteSession,
   onDeleteAllSessions,
   onRenameSession,
-  onExportData,
-  onImportData,
-  onResetAllData,
   activePage,
   onOpenMonitoring,
   collapsed,
-  onToggleCollapsed,
 }: Props) {
   const [activeTab, setActiveTab] = useState<SidebarTab>(activePage === 'monitoring' ? 'monitoring' : 'chats')
   const [serverModalOpen, setServerModalOpen] = useState(false)
@@ -87,10 +68,8 @@ export function ConfigPanel({
   const [draftSessionName, setDraftSessionName] = useState('')
   const [draftName, setDraftName] = useState('')
   const [draftEndpoint, setDraftEndpoint] = useState(endpoint)
-  const [draftAuthMode, setDraftAuthMode] = useState<AuthMode>(authMode)
-  const [draftToken, setDraftToken] = useState(authToken)
-  const [draftOauthToken, setDraftOauthToken] = useState(oauthToken)
-  const [draftHeaders, setDraftHeaders] = useState<HeaderPair[]>(headers)
+  const [draftAuthMode, setDraftAuthMode] = useState<AuthMode>('none')
+  const [draftHeaders, setDraftHeaders] = useState<HeaderPair[]>([])
   const [draftAuthMenuOpen, setDraftAuthMenuOpen] = useState(false)
   const [sessionTypeModalOpen, setSessionTypeModalOpen] = useState(false)
   const [serverTypePickerOpen, setServerTypePickerOpen] = useState(false)
@@ -100,7 +79,6 @@ export function ConfigPanel({
   const [copiedUrl, setCopiedUrl] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
   const serverMenuRef = useRef<HTMLDivElement | null>(null)
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     if (!openMenuId) return
@@ -143,8 +121,8 @@ export function ConfigPanel({
       endpoint: draftEndpoint.trim(),
       serverKind: draftServerKind,
       authMode: draftAuthMode,
-      authToken: draftToken.trim(),
-      oauthToken: draftOauthToken.trim(),
+      authToken: '',
+      oauthToken: '',
       headers: draftHeaders.filter((header) => header.key.trim() && header.value.trim()),
     }
     if (editingServer) {
@@ -162,10 +140,8 @@ export function ConfigPanel({
     setDraftServerKind(server?.serverKind ?? kind ?? 'agent')
     setDraftName(server?.name ?? '')
     setDraftEndpoint(server?.endpoint ?? endpoint)
-    setDraftAuthMode(server?.authMode ?? (server?.oauthToken ? 'oauth2' : server?.authToken ? 'bearer' : authMode))
-    setDraftToken(server?.authToken ?? authToken)
-    setDraftOauthToken(server?.oauthToken ?? oauthToken)
-    setDraftHeaders(server?.headers ?? headers)
+    setDraftAuthMode(server?.authMode ?? (server?.oauthToken ? 'oauth2' : server?.authToken ? 'bearer' : 'none'))
+    setDraftHeaders(server?.headers ?? [])
     setDraftAuthMenuOpen(false)
     setServerModalOpen(true)
   }
@@ -216,9 +192,6 @@ export function ConfigPanel({
   if (collapsed) {
     return (
       <aside className="config-panel config-collapsed side-panel">
-        <button className="icon-button" type="button" onClick={onToggleCollapsed} aria-label="Open sidebar">
-          <PanelLeftOpen size={17} />
-        </button>
         <div className="rail-mark">Agentik</div>
       </aside>
     )
@@ -230,35 +203,6 @@ export function ConfigPanel({
         <div>
           <h1 className='brand-title'>Agentik</h1>
         </div>
-        <button className="icon-button" type="button" onClick={onToggleCollapsed} aria-label="Collapse sidebar">
-          <PanelLeftClose size={17} />
-        </button>
-      </div>
-
-      <div className="sidebar-actions">
-        <button type="button" onClick={onExportData}>
-          <Download size={14} />
-          Export
-        </button>
-        <button type="button" onClick={() => fileInputRef.current?.click()}>
-          <Upload size={14} />
-          Import
-        </button>
-        <button className="danger" type="button" onClick={onResetAllData}>
-          <Trash2 size={14} />
-          Reset all
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="application/json"
-          hidden
-          onChange={(event) => {
-            const file = event.target.files?.[0]
-            if (file) onImportData(file)
-            event.currentTarget.value = ''
-          }}
-        />
       </div>
 
       <div className="sidebar-tabs sidebar-tabs-three" role="tablist" aria-label="Agentik sidebar">
@@ -658,8 +602,8 @@ export function ConfigPanel({
                 </button>
               </div>
             </label>
-            <label>
-              Auth type
+            <div className="modal-field">
+              <span className="input-label">Auth type</span>
               <div className="auth-select">
                 <button type="button" onClick={() => setDraftAuthMenuOpen((open) => !open)} aria-expanded={draftAuthMenuOpen}>
                   {authLabels[draftAuthMode]}
@@ -683,31 +627,10 @@ export function ConfigPanel({
                   </div>
                 ) : null}
               </div>
-            </label>
-            {draftAuthMode === 'bearer' ? (
-              <label>
-                Bearer token
-                <input
-                  type="password"
-                  value={draftToken}
-                  onChange={(event) => setDraftToken(event.target.value)}
-                  placeholder="Optional"
-                  autoComplete="off"
-                />
-              </label>
-            ) : null}
-            {draftAuthMode === 'oauth2' ? (
-              <label>
-                OAuth 2.0 access token
-                <input
-                  type="password"
-                  value={draftOauthToken}
-                  onChange={(event) => setDraftOauthToken(event.target.value)}
-                  placeholder="Access token"
-                  autoComplete="off"
-                />
-              </label>
-            ) : null}
+              {draftAuthMode !== 'none' ? (
+                <p className="credential-note">Credentials are requested when you connect and are never saved.</p>
+              ) : null}
+            </div>
             <div className="input-label">Custom headers</div>
             <div className="header-editor">
               {draftHeaders.map((header) => (

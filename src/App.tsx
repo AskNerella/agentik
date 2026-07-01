@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Download, PanelLeftClose, PanelLeftOpen, Settings, Trash2, Upload } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { ChatWindow } from './components/ChatWindow'
 import { ConfigPanel } from './components/ConfigPanel'
@@ -42,10 +43,20 @@ function normalizeArtifactText(value: string) {
   return value.replace(/\s+/g, ' ').trim()
 }
 
+function withoutStoredCredentials(server: A2AServer): A2AServer {
+  return { ...server, authToken: '', oauthToken: '' }
+}
+
+function sanitizeServers(servers: A2AServer[] | undefined): A2AServer[] {
+  return (servers ?? []).map(withoutStoredCredentials)
+}
+
 function loadStoredData(): Partial<PlaygroundExport> {
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
-    return stored ? JSON.parse(stored) : {}
+    if (!stored) return {}
+    const parsed = JSON.parse(stored) as Partial<PlaygroundExport>
+    return { ...parsed, servers: sanitizeServers(parsed.servers) }
   } catch {
     return {}
   }
@@ -87,6 +98,7 @@ function App() {
   const [streaming, setStreaming] = useState(true)
   const [notification, setNotification] = useState<string | null>(null)
   const [configCollapsed, setConfigCollapsed] = useState(false)
+  const [settingsMenuOpen, setSettingsMenuOpen] = useState(false)
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false)
   const [inspectorExpanded, setInspectorExpanded] = useState(false)
   const [activePage, setActivePage] = useState<AppPage>('playground')
@@ -98,6 +110,8 @@ function App() {
   const [headers, setHeaders] = useState<HeaderPair[]>([])
   const [serverStatus, setServerStatus] = useState<Record<string, ConnectionStatus>>({})
   const [clearedSessionTraceIds, setClearedSessionTraceIds] = useState<Set<string>>(new Set())
+  const settingsMenuRef = useRef<HTMLDivElement | null>(null)
+  const importInputRef = useRef<HTMLInputElement | null>(null)
 
   // MCP client state for the active MCP session
   const [mcpServerInfo, setMcpServerInfo] = useState<McpServerInfo | null>(null)
@@ -271,6 +285,26 @@ function App() {
     return () => window.clearTimeout(timer)
   }, [notification])
 
+  useEffect(() => {
+    if (!settingsMenuOpen) return
+
+    const closeSettings = (event: MouseEvent) => {
+      if (!settingsMenuRef.current?.contains(event.target as Node)) {
+        setSettingsMenuOpen(false)
+      }
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSettingsMenuOpen(false)
+    }
+
+    document.addEventListener('mousedown', closeSettings)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('mousedown', closeSettings)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [settingsMenuOpen])
+
   const handleFetchAgentCard = async () => {
     if (!endpoint.trim()) return
     setNotification(null)
@@ -388,6 +422,10 @@ function App() {
     if (!keepConnection) {
       setEndpoint('')
       setEndpointProvided(false)
+      setAuthMode('none')
+      setAuthToken('')
+      setOauthToken('')
+      setHeaders([])
       clearAgentCard()
       setMcpServerInfo(null)
       setMcpTools([])
@@ -415,6 +453,10 @@ function App() {
     setMessages(nextSession.messages)
     setEndpoint(nextSession.endpoint)
     setEndpointProvided(nextSession.connected)
+    setAuthMode('none')
+    setAuthToken('')
+    setOauthToken('')
+    setHeaders([])
     setCard(nextSession.agentCard ?? null)
     setSelectedTraceMessageId(null)
     // Restore MCP state if it's an MCP session
@@ -525,47 +567,48 @@ function App() {
   }
 
   const handleSaveServer = (server: Omit<A2AServer, 'id' | 'createdAt'>) => {
-    const nextServer = {
+    const nextServer = withoutStoredCredentials({
       ...server,
       id: crypto.randomUUID(),
       createdAt: new Date().toISOString(),
-    }
+    })
     setServers((current) => [nextServer, ...current])
     setEndpoint(nextServer.endpoint)
     setAuthMode(resolveAuthMode(nextServer.authMode, nextServer.authToken, nextServer.oauthToken))
-    setAuthToken(nextServer.authToken)
-    setOauthToken(nextServer.oauthToken ?? '')
+    setAuthToken('')
+    setOauthToken('')
     setHeaders(nextServer.headers)
     setEndpointProvided(false)
   }
 
   const handleUpdateServer = (id: string, server: Omit<A2AServer, 'id' | 'createdAt'>) => {
+    const sanitizedServer = { ...server, authToken: '', oauthToken: '' }
     const previous = servers.find((item) => item.id === id)
     const changed =
       previous &&
-      (previous.name !== server.name ||
-        previous.endpoint !== server.endpoint ||
-        previous.authMode !== server.authMode ||
-        previous.authToken !== server.authToken ||
-        previous.oauthToken !== server.oauthToken ||
-        JSON.stringify(previous.headers) !== JSON.stringify(server.headers))
+      (previous.name !== sanitizedServer.name ||
+        previous.endpoint !== sanitizedServer.endpoint ||
+        previous.authMode !== sanitizedServer.authMode ||
+        previous.authToken !== sanitizedServer.authToken ||
+        previous.oauthToken !== sanitizedServer.oauthToken ||
+        JSON.stringify(previous.headers) !== JSON.stringify(sanitizedServer.headers))
     setServers((current) =>
       current.map((item) =>
         item.id === id
           ? {
               ...item,
-              ...server,
+              ...sanitizedServer,
             }
           : item,
       ),
     )
 
     if (previous?.endpoint && endpoint === previous.endpoint) {
-      setEndpoint(server.endpoint)
-      setAuthMode(resolveAuthMode(server.authMode, server.authToken, server.oauthToken))
-      setAuthToken(server.authToken)
-      setOauthToken(server.oauthToken ?? '')
-      setHeaders(server.headers)
+      setEndpoint(sanitizedServer.endpoint)
+      setAuthMode(resolveAuthMode(sanitizedServer.authMode, '', ''))
+      setAuthToken('')
+      setOauthToken('')
+      setHeaders(sanitizedServer.headers)
     }
 
     if (previous?.endpoint && changed) {
@@ -600,9 +643,9 @@ function App() {
   }
 
   const handleSelectServer = (server: A2AServer) => {
-    setAuthMode(resolveAuthMode(server.authMode, server.authToken, server.oauthToken))
-    setAuthToken(server.authToken)
-    setOauthToken(server.oauthToken ?? '')
+    setAuthMode(resolveAuthMode(server.authMode, '', ''))
+    setAuthToken('')
+    setOauthToken('')
     setHeaders(server.headers)
     setEndpointProvided(false)
     setNotification(null)
@@ -623,9 +666,9 @@ function App() {
   // Pre-fill endpoint/auth from a saved MCP server without creating a new session
   const handleSelectMcpServer = (server: A2AServer) => {
     setEndpoint(server.endpoint)
-    setAuthMode(resolveAuthMode(server.authMode, server.authToken, server.oauthToken))
-    setAuthToken(server.authToken)
-    setOauthToken(server.oauthToken ?? '')
+    setAuthMode(resolveAuthMode(server.authMode, '', ''))
+    setAuthToken('')
+    setOauthToken('')
     setHeaders(server.headers)
   }
 
@@ -995,7 +1038,7 @@ function App() {
         setEndpoint(firstSession.endpoint)
         setEndpointProvided(firstSession.connected)
       }
-      if (parsed.servers) setServers(parsed.servers)
+      if (parsed.servers) setServers(sanitizeServers(parsed.servers))
       if (parsed.traces) setLogs(parsed.traces)
       setNotification('Imported playground data.')
     } catch {
@@ -1007,12 +1050,82 @@ function App() {
     <main
       className={`app-shell ${configCollapsed ? 'config-is-collapsed' : ''} ${inspectorCollapsed ? 'inspector-is-collapsed' : ''} ${inspectorExpanded ? 'inspector-is-expanded' : ''}`}
     >
+      <header className="window-titlebar" data-tauri-drag-region>
+        <button
+          className="titlebar-sidebar-toggle"
+          type="button"
+          onClick={() => setConfigCollapsed((collapsed) => !collapsed)}
+          aria-label={configCollapsed ? 'Open sidebar' : 'Collapse sidebar'}
+          title={configCollapsed ? 'Open sidebar' : 'Collapse sidebar'}
+        >
+          {configCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+        </button>
+
+        <div className="titlebar-settings" ref={settingsMenuRef}>
+          <button
+            className="settings-trigger"
+            type="button"
+            onClick={() => setSettingsMenuOpen((open) => !open)}
+            aria-haspopup="menu"
+            aria-expanded={settingsMenuOpen}
+          >
+            <Settings size={16} />
+            <span>Settings</span>
+          </button>
+
+          {settingsMenuOpen ? (
+            <div className="settings-menu" role="menu" aria-label="Playground settings">
+              <div className="settings-menu-heading">
+                <strong>Playground settings</strong>
+                <span>Manage your local workspace data.</span>
+              </div>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  handleExportData()
+                  setSettingsMenuOpen(false)
+                }}
+              >
+                <Download size={16} />
+                <span><strong>Export data</strong><small>Download chats, servers, and traces.</small></span>
+              </button>
+              <button type="button" role="menuitem" onClick={() => importInputRef.current?.click()}>
+                <Upload size={16} />
+                <span><strong>Import data</strong><small>Restore a playground JSON export.</small></span>
+              </button>
+              <div className="settings-menu-divider" />
+              <button
+                className="danger"
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  handleResetAllData()
+                  setSettingsMenuOpen(false)
+                }}
+              >
+                <Trash2 size={16} />
+                <span><strong>Reset all data</strong><small>Remove every saved chat, server, and trace.</small></span>
+              </button>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept="application/json"
+                hidden
+                onChange={(event) => {
+                  const file = event.target.files?.[0]
+                  if (file) void handleImportData(file)
+                  event.currentTarget.value = ''
+                  setSettingsMenuOpen(false)
+                }}
+              />
+            </div>
+          ) : null}
+        </div>
+      </header>
+
       <ConfigPanel
         endpoint={endpoint}
-        authMode={authMode}
-        authToken={authToken}
-        oauthToken={oauthToken}
-        headers={headers}
         sessions={sessions}
         servers={servers}
         serverStatus={serverStatus}
@@ -1027,13 +1140,9 @@ function App() {
         onDeleteSession={handleDeleteSession}
         onDeleteAllSessions={handleDeleteAllSessions}
         onRenameSession={handleRenameSession}
-        onExportData={handleExportData}
-        onImportData={handleImportData}
-        onResetAllData={handleResetAllData}
         activePage={activePage}
         onOpenMonitoring={() => setActivePage('monitoring')}
         collapsed={configCollapsed}
-        onToggleCollapsed={() => setConfigCollapsed((collapsed) => !collapsed)}
       />
 
       <div className="workspace">

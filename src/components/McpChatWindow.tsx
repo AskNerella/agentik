@@ -332,7 +332,7 @@ function McpConnectForm({
         available tools, resources, and prompts.
       </p>
       {mcpServers.length > 0 ? (
-        <div className="advanced-section">
+        <div className="advanced-section saved-mcp-server-section">
           <span className="advanced-heading">Saved MCP server</span>
           <div className="auth-select connect-agent-select">
             <button type="button" onClick={() => setServerMenuOpen((o) => !o)} aria-expanded={serverMenuOpen}>

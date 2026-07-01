@@ -1,10 +1,156 @@
 .app-shell {
+  --titlebar-height: 52px;
+  height: 100svh;
   min-height: 100svh;
   display: grid;
   grid-template-columns: 330px minmax(420px, 1fr) 360px;
   gap: 0;
-  padding: 0;
+  padding: var(--titlebar-height) 0 0;
+  overflow: hidden;
   transition: grid-template-columns 220ms ease;
+}
+
+.window-titlebar {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 200;
+  height: var(--titlebar-height);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  user-select: none;
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  app-region: drag;
+  -webkit-app-region: drag;
+}
+
+.titlebar-sidebar-toggle,
+.settings-trigger {
+  position: absolute;
+  top: 9px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--muted);
+  background: transparent;
+  app-region: no-drag;
+  -webkit-app-region: no-drag;
+  transition: color 150ms ease, background 150ms ease, border-color 150ms ease;
+}
+
+.titlebar-sidebar-toggle {
+  left: 91px;
+  width: 34px;
+}
+
+.titlebar-sidebar-toggle:hover,
+.settings-trigger:hover,
+.settings-trigger[aria-expanded='true'] {
+  color: var(--text);
+  border-color: var(--border);
+  background: var(--surface-soft);
+}
+
+.titlebar-settings {
+  position: absolute;
+  top: 0;
+  right: 12px;
+  height: 100%;
+  app-region: no-drag;
+  -webkit-app-region: no-drag;
+}
+
+.settings-trigger {
+  position: relative;
+  top: 9px;
+  gap: 7px;
+  padding: 0 11px;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.settings-menu {
+  position: absolute;
+  top: 47px;
+  right: 0;
+  z-index: 220;
+  width: 310px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 6px;
+  background: var(--surface-strong);
+  box-shadow: 0 18px 52px rgba(23, 21, 18, 0.16);
+  animation: fade-slide 150ms ease both;
+}
+
+.settings-menu-heading {
+  display: grid;
+  gap: 3px;
+  padding: 10px 11px 12px;
+}
+
+.settings-menu-heading strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.settings-menu-heading span,
+.settings-menu button small {
+  color: var(--faint);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.settings-menu button {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  border: 0;
+  border-radius: 8px;
+  padding: 10px;
+  color: var(--muted);
+  background: transparent;
+  text-align: left;
+}
+
+.settings-menu button > span {
+  display: grid;
+  gap: 2px;
+}
+
+.settings-menu button strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.settings-menu button svg {
+  margin-top: 1px;
+}
+
+.settings-menu button:hover {
+  color: var(--accent);
+  background: var(--surface-soft);
+}
+
+.settings-menu button.danger,
+.settings-menu button.danger strong {
+  color: var(--danger);
+}
+
+.settings-menu button.danger:hover {
+  background: var(--danger-soft);
+}
+
+.settings-menu-divider {
+  height: 1px;
+  margin: 5px 8px;
+  background: var(--border);
 }
 
 .app-shell.config-is-collapsed {
@@ -37,13 +183,13 @@
 }
 
 .config-panel {
-  height: 100svh;
+  height: 100%;
   display: flex;
   flex-direction: column;
   border-width: 0 1px 0 0;
   border-radius: 0;
   padding: 18px;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .config-collapsed {
@@ -57,7 +203,7 @@
 .rail-mark {
   writing-mode: vertical-rl;
   color: var(--accent-strong);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 800;
   letter-spacing: 0;
 }
@@ -69,7 +215,7 @@
 .workspace {
   min-width: 0;
   display: block;
-  height: 100svh;
+  height: 100%;
   overflow: hidden;
   border-width: 0;
   background: var(--surface);
@@ -127,6 +273,10 @@
     box-shadow 150ms ease;
 }
 
+.sidebar-tabs button {
+  font-size: 14px;
+}
+
 .sidebar-tabs button.active,
 .inspector-tabs button.active {
   color: var(--text);
@@ -151,46 +301,9 @@
   overflow: auto;
 }
 
-.sidebar-actions {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin-bottom: 14px;
-}
-
-.sidebar-actions button {
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--muted);
-  background: var(--surface-strong);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.sidebar-actions button:hover {
-  color: var(--accent);
-  border-color: var(--accent);
-}
-
-.sidebar-actions button.danger {
-  color: var(--danger);
-  border-color: var(--danger-soft);
-}
-
-.sidebar-actions button.danger:hover {
-  color: var(--danger);
-  border-color: var(--danger);
-  background: var(--danger-soft);
-}
-
 .new-task-button {
   width: 100%;
-  height: 36px;
+  height: 42px;
   display: inline-flex;
   align-items: center;
   gap: 9px;
@@ -207,7 +320,7 @@
   border-radius: 8px;
   padding: 0 10px;
   background: var(--surface-strong);
-  font-size: 14px;
+  font-size: 15px;
   justify-content: flex-start;
 }
 
@@ -264,7 +377,7 @@
 .server-item,
 .server-select-button {
   width: 100%;
-  min-height: 58px;
+  min-height: 64px;
   display: grid;
   grid-template-columns: 1fr 18px;
   align-items: center;
@@ -296,7 +409,7 @@
   max-width: 100%;
   overflow: hidden;
   color: var(--text);
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -310,7 +423,7 @@
   overflow: hidden;
   margin-top: 3px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -343,7 +456,7 @@
 .chat-session-main {
   min-width: 0;
   width: 100%;
-  min-height: 58px;
+  min-height: 64px;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-items: center;
@@ -367,14 +480,14 @@
 
 .chat-session-main strong {
   color: var(--text);
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.2;
 }
 
 .chat-session-main span {
   margin-top: 3px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.25;
 }
 
@@ -415,7 +528,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text);
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 700;
   line-height: 1.2;
 }
@@ -427,7 +540,7 @@
   white-space: nowrap;
   margin-top: 2px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -532,7 +645,7 @@
 
 .sidebar-empty p {
   max-width: 190px;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .brand-mark {
@@ -942,7 +1055,7 @@ textarea::placeholder {
 .chat-section {
   display: grid;
   grid-template-rows: auto minmax(180px, 1fr) auto auto;
-  height: 100svh;
+  height: 100%;
   min-height: 0;
   border-bottom: 0;
   max-width: none;
@@ -1410,6 +1523,32 @@ textarea::placeholder {
   text-align: left;
 }
 
+.saved-mcp-server-section {
+  width: min(280px, 100%);
+}
+
+.saved-mcp-server-section .advanced-heading {
+  font-size: 13px;
+}
+
+.saved-mcp-server-section .connect-agent-select > button {
+  height: 46px;
+  padding: 0 14px;
+  font-size: 15px;
+}
+
+.saved-mcp-server-section .auth-menu {
+  padding: 6px;
+}
+
+.saved-mcp-server-section .auth-menu button {
+  min-height: 40px;
+  height: auto;
+  padding: 9px 11px;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
 .connect-input input {
   height: 42px;
   border: 1px solid var(--border);
@@ -1700,12 +1839,12 @@ textarea::placeholder {
 
 .inspector-panel {
   min-width: 0;
-  height: 100svh;
+  height: 100%;
   display: flex;
   flex-direction: column;
   border-width: 0 0 0 1px;
   padding: 18px;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .inspector-expanded {
@@ -1755,7 +1894,7 @@ textarea::placeholder {
 }
 
 .inspector-pane {
-  min-height: calc(100svh - 138px);
+  min-height: 0;
   display: flex;
   flex-direction: column;
   padding-top: 18px;
@@ -2483,7 +2622,7 @@ textarea::placeholder {
 }
 
 .monitoring-page {
-  height: 100svh;
+  height: 100%;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -2796,9 +2935,17 @@ textarea::placeholder {
   margin: 0;
 }
 
-.modal label {
+.modal label,
+.modal-field {
   display: grid;
   gap: 7px;
+}
+
+.credential-note {
+  margin-top: 1px;
+  color: var(--faint);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .modal input {
@@ -3042,10 +3189,11 @@ pre {
 
   .inspector-panel {
     position: fixed;
-    top: 0;
+    top: var(--titlebar-height);
     right: 0;
     z-index: 12;
     width: min(380px, calc(100vw - 72px));
+    height: calc(100svh - var(--titlebar-height));
     border-width: 0 0 0 1px;
     box-shadow: -16px 0 48px rgba(23, 21, 18, 0.12);
   }
@@ -3076,7 +3224,7 @@ pre {
   .app-shell {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    padding: 0;
+    padding: var(--titlebar-height) 0 0;
   }
 
   .config-panel,
@@ -3088,8 +3236,9 @@ pre {
 
   .config-panel {
     position: fixed;
-    inset: 0 auto 0 0;
+    inset: var(--titlebar-height) auto 0 0;
     z-index: 13;
+    height: auto;
     width: min(330px, calc(100vw - 58px));
     display: flex;
     flex-direction: column;
@@ -3100,7 +3249,7 @@ pre {
   .config-collapsed {
     width: 56px;
     height: 56px;
-    inset: 0 auto auto 0;
+    inset: var(--titlebar-height) auto auto 0;
     border-width: 0;
     padding: 12px;
     background: transparent;
@@ -3114,7 +3263,7 @@ pre {
   .inspector-collapsed {
     display: flex;
     position: fixed;
-    top: 0;
+    top: var(--titlebar-height);
     right: 0;
   }
 
@@ -3155,6 +3304,11 @@ pre {
 
   .chat-section {
     min-height: 72svh;
+  }
+
+  .settings-menu {
+    right: -4px;
+    width: min(310px, calc(100vw - 16px));
   }
 }
 
@@ -3274,7 +3428,7 @@ pre {
 .mcp-chat-section {
   display: flex;
   flex-direction: column;
-  height: 100svh;
+  height: 100%;
   overflow: hidden;
 }
 

@@ -13,6 +13,12 @@
     "windows": [
       {
         "title": "Agentik Playground",
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": {
+          "x": 18,
+          "y": 27
+        },
         "width": 1440,
         "height": 900,
         "minWidth": 960,
